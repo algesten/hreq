@@ -1,6 +1,6 @@
 use crate::connect;
-use crate::req_ext::with_request_params;
-use crate::req_ext::RequestParams;
+use crate::reqb_ext::with_request_params;
+use crate::reqb_ext::RequestParams;
 use crate::uri_ext::UriExt;
 use crate::Body;
 use crate::Connection;

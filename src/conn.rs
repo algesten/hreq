@@ -1,8 +1,8 @@
 use crate::conn_http1::send_request_http1;
 use crate::conn_http2::send_request_http2;
 use crate::h1::SendRequest as H1SendRequest;
-use crate::req_ext::resolve_hreq_ext;
-use crate::req_ext::RequestParams;
+use crate::reqb_ext::resolve_hreq_ext;
+use crate::reqb_ext::RequestParams;
 use crate::uri_ext::MethodExt;
 use crate::Body;
 use crate::Error;

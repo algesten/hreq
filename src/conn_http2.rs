@@ -1,5 +1,5 @@
 use crate::body::BodyImpl;
-use crate::req_ext::RequestParams;
+use crate::reqb_ext::RequestParams;
 use crate::Body;
 use crate::Error;
 use bytes::Bytes;

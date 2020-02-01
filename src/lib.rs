@@ -17,6 +17,7 @@ mod error;
 mod h1;
 mod proto;
 mod req_ext;
+mod reqb_ext;
 mod res_ext;
 mod tls;
 mod tls_pass;
@@ -33,7 +34,8 @@ pub use crate::async_impl::AsyncRuntime;
 pub use crate::block_ext::BlockExt;
 pub use crate::body::Body;
 pub use crate::error::Error;
-pub use crate::req_ext::{RequestBuilderExt, RequestExt};
+pub use crate::req_ext::RequestExt;
+pub use crate::reqb_ext::RequestBuilderExt;
 pub use crate::res_ext::ResponseExt;
 pub use http;
 
