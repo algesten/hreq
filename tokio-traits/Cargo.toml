@@ -1,0 +1,8 @@
+[package]
+name = "tokio-traits"
+version = "0.1.0"
+authors = ["Martin Algesten <martin@algesten.se>"]
+edition = "2018"
+
+[dependencies]
+tokio = { package = "tokio", version = "0.2", default-features = false }

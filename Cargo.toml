@@ -1,0 +1,62 @@
+[package]
+name = "vreq"
+version = "1.0.0"
+authors = ["Martin Algesten <martin@lookback.io>"]
+edition = "2018"
+
+[features]
+default = [
+    # "tokio",
+    "async-std",
+    "gzip",
+    "rustls",
+    # "tlsapi"
+]
+async-std = [
+    "async-std-lib",
+]
+tokio = [
+    "tokio-lib",
+]
+gzip = [
+    "async-compression",
+    "flate2"
+]
+rustls = [
+    "tls-api-rustls"
+]
+tlsapi = []
+
+[dependencies]
+bytes = "*"
+cookie = "*"
+futures-io = { version = "0.3" }
+futures-util = { version = "0.3", features=["io"] }
+h2 = "*"
+http = "*"
+httparse = "*"
+log = "*"
+once_cell = "*"
+qstring = "*"
+async-trait = "*"
+tls-api = "*"
+encoding_rs = "*"
+# We always need tokio asyncwrite/asyncread traits also for async-std because tlsapi.
+tokio-traits = { path = "./tokio-traits" }
+
+## async-std
+async-std-lib = { package = "async-std", version = "*", optional = true }
+
+## tokio
+tokio-lib = { package = "tokio", version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time"], optional = true }
+
+## gzip
+async-compression = { version = "*", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
+flate2 = { version = "*", default-features = false, features = [], optional = true }
+
+## rustls
+tls-api-rustls = { version = "*", optional = true }
+
+[dev-dependencies]
+tide = "0.6.0"
+async-std-lib = { package = "async-std", version = "*", features = ["unstable"] }
