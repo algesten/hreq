@@ -1,6 +1,7 @@
 use crate::AsyncBufRead;
 use encoding_rs::{Decoder, Encoder, Encoding};
 use futures_util::ready;
+use std::fmt;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -53,5 +54,20 @@ impl CharCodec {
         Pin::new(&mut *from).consume(read);
 
         Ok(written).into()
+    }
+}
+
+impl fmt::Debug for Codec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Codec::Encoder(v) => write!(f, "enc_{}", v.encoding().name()),
+            Codec::Decoder(v) => write!(f, "dec_{}", v.encoding().name()),
+        }
+    }
+}
+
+impl fmt::Debug for CharCodec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
     }
 }

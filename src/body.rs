@@ -9,6 +9,7 @@ use futures_util::future::poll_fn;
 use futures_util::io::BufReader;
 use futures_util::ready;
 use h2::RecvStream as H2RecvStream;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::mem;
@@ -155,7 +156,7 @@ impl Body {
 #[allow(clippy::large_enum_variant)]
 enum BodyCodec {
     Deferred(Option<BodyReader>),
-    Plain(BodyReader),
+    Pass(BodyReader),
     #[cfg(feature = "gzip")]
     GzipDecoder(GzipDecoder<BufReader<BodyReader>>),
     #[cfg(feature = "gzip")]
@@ -170,7 +171,7 @@ impl BodyCodec {
     fn from_encoding(reader: BodyReader, encoding: Option<&str>, is_decode: bool) -> Self {
         trace!("Body codec: {:?}", encoding);
         match (encoding, is_decode) {
-            (None, _) => BodyCodec::Plain(reader),
+            (None, _) => BodyCodec::Pass(reader),
             #[cfg(feature = "gzip")]
             (Some("gzip"), true) => {
                 let buf = BufReader::new(reader);
@@ -184,21 +185,21 @@ impl BodyCodec {
             }
             _ => {
                 warn!("Unknown content-encoding: {:?}", encoding);
-                BodyCodec::Plain(reader)
+                BodyCodec::Pass(reader)
             }
         }
     }
 
-    // fn reader_mut(&mut self) -> &mut BodyReader {
-    //     match self {
-    //         BodyCodec::Deferred(_) => panic!("into_inner() on BodyCodec::Deferred"),
-    //         BodyCodec::Plain(r) => r,
-    //         #[cfg(feature = "gzip")]
-    //         BodyCodec::GzipDecoder(r) => r.get_mut().get_mut(),
-    //         #[cfg(feature = "gzip")]
-    //         BodyCodec::GzipEncoder(r) => r.get_mut().get_mut(),
-    //     }
-    // }
+    fn reader_ref(&self) -> Option<&BodyReader> {
+        match self {
+            BodyCodec::Deferred(_) => None,
+            BodyCodec::Pass(r) => Some(r),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipDecoder(r) => Some(r.get_ref().get_ref()),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipEncoder(r) => Some(r.get_ref().get_ref()),
+        }
+    }
 }
 
 pub struct BodyReader {
@@ -374,7 +375,7 @@ impl AsyncRead for BodyCodec {
         let this = self.get_mut();
         match this {
             BodyCodec::Deferred(_) => panic!("poll_read on BodyCodec::Deferred"),
-            BodyCodec::Plain(r) => Pin::new(r).poll_read(cx, buf),
+            BodyCodec::Pass(r) => Pin::new(r).poll_read(cx, buf),
             #[cfg(feature = "gzip")]
             BodyCodec::GzipDecoder(r) => Pin::new(r).poll_read(cx, buf),
             #[cfg(feature = "gzip")]
@@ -404,4 +405,55 @@ fn charset_from_headers(headers: &http::header::HeaderMap) -> Option<&str> {
             let mut s = x.split('=');
             s.nth(1)
         })
+}
+
+impl fmt::Debug for BodyCodec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BodyCodec::Deferred(_) => write!(f, "defer"),
+            BodyCodec::Pass(_) => write!(f, "pass"),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipDecoder(_) => write!(f, "gzip_dec"),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipEncoder(_) => write!(f, "gzip_enc"),
+        }
+    }
+}
+
+impl fmt::Debug for BodyReader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.imp)
+    }
+}
+
+impl fmt::Debug for BodyImpl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BodyImpl::RequestEmpty => write!(f, "empty"),
+            BodyImpl::RequestAsyncRead(_) => write!(f, "async"),
+            BodyImpl::RequestRead(_) => write!(f, "sync"),
+            BodyImpl::Http1(_) => write!(f, "http1"),
+            BodyImpl::Http2(_) => write!(f, "http2"),
+        }
+    }
+}
+
+impl fmt::Debug for Body {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Body {{ reader: ")?;
+        match self.codec.get_ref().reader_ref() {
+            Some(v) => write!(f, "{:?}", v),
+            None => write!(f, "none"),
+        }?;
+        write!(f, ", codec: {:?}", self.codec.get_ref())?;
+        if let Some(char_codec) = &self.char_codec {
+            write!(f, ", char_codec: {:?}", char_codec)?;
+        }
+        write!(f, ", len: ")?;
+        match &self.content_length {
+            Some(v) => write!(f, "{}", v),
+            None => write!(f, "unknown"),
+        }?;
+        write!(f, " }}")
+    }
 }
