@@ -60,3 +60,4 @@ tls-api-rustls = { version = "*", optional = true }
 [dev-dependencies]
 tide = "0.6.0"
 async-std-lib = { package = "async-std", version = "*", features = ["unstable"] }
+paste = "0.1.6"
