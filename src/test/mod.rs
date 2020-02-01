@@ -5,11 +5,14 @@ use crate::Error;
 use async_std_lib::sync::channel;
 use futures_util::future::FutureExt;
 use futures_util::select;
+use std::io;
 use std::net;
+use std::sync::Mutex;
 use tide;
 
 mod basic;
 mod simplelog;
+mod timeout;
 
 pub fn test_setup() {
     simplelog::set_logger();
@@ -23,22 +26,30 @@ pub fn run_server<Res>(
     res: Res,
 ) -> Result<(http::Request<()>, http::Response<()>, Vec<u8>), Error>
 where
-    Res: tide::IntoResponse + Clone + Sync + 'static,
+    Res: tide::IntoResponse + 'static,
 {
     test_setup();
     AsyncRuntime::current().block_on(async {
         // channel where we "leak" the server request from tide
         let (txsreq, rxsreq) = channel(1);
+        // channel where send a message when we know the server is up
+        let (txstart, rxstart) = channel(1);
         // channel where we shut down tide server using select! macro
         let (txend, rxend) = channel::<()>(1);
+
+        let res_mut = Mutex::new(Some(res));
 
         let mut app = tide::new();
         app.at("/*path").all(move |req| {
             let txsreq = txsreq.clone();
-            let resp = res.clone();
+            let res = res_mut.lock().unwrap().take();
             async move {
                 txsreq.send(req).await;
-                resp
+                if let Some(res) = res {
+                    res
+                } else {
+                    panic!("Already used up response");
+                }
             }
         });
 
@@ -50,12 +61,35 @@ where
         let req = http::Request::from_parts(parts, body);
 
         // Run the server app in a select! that ends when we send the end signal.
+        {
+            let hostport = hostport.clone();
+            AsyncRuntime::current().spawn(async move {
+                select! {
+                    a = app.listen(&hostport).fuse() => a.map_err(|e| Error::Io(e)),
+                    b = rxend.recv().fuse() => Ok(()),
+                }
+            });
+        }
+
+        // loop until a tcp connection can connect to the server
         AsyncRuntime::current().spawn(async move {
-            select! {
-                a = app.listen(&hostport).fuse() => a.map_err(|e| Error::Io(e)),
-                b = rxend.recv().fuse() => Ok(()),
-            }
+            let ret = loop {
+                match AsyncRuntime::current().connect_tcp(&hostport).await {
+                    Ok(_) => break Ok(()),
+                    Err(e) => match e.into_io() {
+                        Some(ioe) => match ioe.kind() {
+                            io::ErrorKind::ConnectionRefused => continue,
+                            _ => break Err(ioe),
+                        },
+                        None => panic!("Unexpected error in connect_tcp"),
+                    },
+                }
+            };
+            txstart.send(ret).await;
         });
+
+        // wait until we know the server accepts requests
+        rxstart.recv().await.expect("rxstart.recv()")?;
 
         // Send request and wait for the client response.
         let client_res = req.send().await?;
