@@ -39,18 +39,16 @@ where
 #[async_trait]
 impl RequestBuilderExt for request::Builder {
     //
-    fn query(mut self, key: &str, value: &str) -> Self {
-        with_builder_store(self.headers_mut(), |store| {
+    fn query(self, key: &str, value: &str) -> Self {
+        with_builder_store(self, |store| {
             store.query_params.push((key.into(), value.into()));
-        });
-        self
+        })
     }
 
-    fn timeout(mut self, duration: Duration) -> Self {
-        with_builder_store(self.headers_mut(), |store| {
+    fn timeout(self, duration: Duration) -> Self {
+        with_builder_store(self, |store| {
             store.req_params.timeout = Some(duration);
-        });
-        self
+        })
     }
 
     fn with_body<B: Into<Body>>(self, body: B) -> http::Result<Request<Body>> {
@@ -192,10 +190,10 @@ impl BuilderStore {
 }
 
 fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
-    headers: Option<&mut http::HeaderMap<http::HeaderValue>>,
+    mut builder: http::request::Builder,
     f: F,
-) {
-    if let Some(headers) = headers {
+) -> http::request::Builder {
+    if let Some(headers) = builder.headers_mut() {
         let val = headers
             .entry("x-vreq-ext")
             .or_insert_with(|| ID_COUNTER.fetch_add(1, Ordering::Relaxed).into());
@@ -204,6 +202,7 @@ fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
         let vreq_ext = lock.entry(id).or_insert_with(BuilderStore::new);
         f(vreq_ext);
     }
+    builder
 }
 
 pub fn resolve_vreq_ext(parts: &mut http::request::Parts) -> Option<RequestParams> {
