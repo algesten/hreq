@@ -101,14 +101,14 @@ impl AsyncRuntime {
 }
 
 #[cfg(feature = "async-std")]
-pub mod async_std {
+pub(crate) mod async_std {
     use super::*;
     use async_std_lib::net::TcpStream;
     use async_std_lib::task;
 
     impl Stream for TcpStream {}
 
-    pub async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
+    pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
         Ok(TcpStream::connect(addr).await?)
     }
 
@@ -131,7 +131,7 @@ pub mod async_std {
 }
 
 #[cfg(feature = "tokio")]
-pub mod async_tokio {
+pub(crate) mod async_tokio {
     use super::*;
     use crate::tokio::from_tokio;
     use once_cell::sync::OnceCell;
@@ -143,7 +143,7 @@ pub mod async_tokio {
     static RUNTIME: OnceCell<Mutex<Runtime>> = OnceCell::new();
     static HANDLE: OnceCell<Handle> = OnceCell::new();
 
-    pub async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
+    pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
         Ok(from_tokio(TcpStream::connect(addr).await?))
     }
 

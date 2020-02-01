@@ -11,7 +11,7 @@ use tls_api::TlsConnectorBuilder;
 unsafe impl<S: Stream> Sync for crate::tokio::TokioStream<S> {}
 unsafe impl Sync for crate::body::BodyImpl {}
 
-pub async fn wrap_tls<Tls: TlsConnector, S: Stream>(
+pub(crate) async fn wrap_tls<Tls: TlsConnector, S: Stream>(
     stream: S,
     domain: &str,
 ) -> Result<(impl Stream, Protocol), Error> {

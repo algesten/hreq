@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 
 use tokio_traits::{TokioAsyncRead, TokioAsyncWrite};
 
-pub fn from_tokio<Z>(adapted: Z) -> impl Stream
+pub(crate) fn from_tokio<Z>(adapted: Z) -> impl Stream
 where
     Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static,
 {
@@ -46,11 +46,11 @@ impl<Z: TokioAsyncWrite + Unpin> AsyncWrite for FromAdapter<Z> {
 
 impl<Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static> Stream for FromAdapter<Z> {}
 
-pub fn to_tokio<S: Stream>(adapted: S) -> TokioStream<S> {
+pub(crate) fn to_tokio<S: Stream>(adapted: S) -> TokioStream<S> {
     TokioStream { adapted }
 }
 
-pub struct TokioStream<S> {
+pub(crate) struct TokioStream<S> {
     adapted: S,
 }
 

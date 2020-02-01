@@ -5,6 +5,7 @@ extern crate log;
 
 mod agent;
 mod async_impl;
+mod block_ext;
 mod body;
 mod charset;
 mod conn;
@@ -13,7 +14,7 @@ mod conn_http2;
 mod deadline;
 mod either;
 mod error;
-pub mod h1;
+mod h1;
 mod proto;
 mod req_ext;
 mod res_ext;
@@ -29,8 +30,8 @@ pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
 pub use crate::agent::Agent;
 pub use crate::async_impl::AsyncRuntime;
+pub use crate::block_ext::BlockExt;
 pub use crate::body::Body;
-pub use crate::conn::Connection;
 pub use crate::error::Error;
 pub use crate::req_ext::{RequestBuilderExt, RequestExt};
 pub use crate::res_ext::ResponseExt;
@@ -41,19 +42,19 @@ pub mod prelude {
     pub use http::{Request, Response};
 }
 
+use crate::conn::Connection;
 use crate::conn::ProtocolImpl;
 use crate::either::Either;
 use crate::proto::Protocol;
 use crate::tls::wrap_tls;
 use crate::tokio::to_tokio;
 use crate::uri_ext::UriExt;
-use std::future::Future;
 use tls_api::TlsConnector;
 
-pub trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
+pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl Stream for Box<dyn Stream> {}
 
-pub async fn connect<Tls: TlsConnector>(uri: &http::Uri) -> Result<Connection, Error> {
+pub(crate) async fn connect<Tls: TlsConnector>(uri: &http::Uri) -> Result<Connection, Error> {
     let hostport = uri.host_port()?;
     // "host:port"
     let addr = hostport.to_string();
@@ -75,7 +76,7 @@ pub async fn connect<Tls: TlsConnector>(uri: &http::Uri) -> Result<Connection, E
     open_stream(addr, stream, alpn_proto).await
 }
 
-pub async fn open_stream(
+pub(crate) async fn open_stream(
     addr: String,
     stream: impl Stream,
     proto: Protocol,
@@ -100,17 +101,5 @@ pub async fn open_stream(
             }
         });
         Ok(Connection::new(addr, ProtocolImpl::Http1(h1)))
-    }
-}
-
-pub trait BlockExt {
-    fn block(self) -> Self::Output
-    where
-        Self: Future;
-}
-
-impl<F: Future> BlockExt for F {
-    fn block(self) -> F::Output {
-        AsyncRuntime::current().block_on(self)
     }
 }

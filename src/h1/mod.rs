@@ -183,10 +183,12 @@ impl RecvStream {
         Ok(amount).into()
     }
 
+    #[allow(dead_code)]
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         Ok(poll_fn(|cx| self.poll_read(cx, buf)).await?)
     }
 
+    #[allow(dead_code)]
     pub fn is_end(&self) -> bool {
         self.finished
     }

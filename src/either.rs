@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 #[allow(unused)]
-pub enum Either<A: Stream, B: Stream> {
+pub(crate) enum Either<A: Stream, B: Stream> {
     A(A),
     B(B),
 }
