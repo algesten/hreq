@@ -10,7 +10,7 @@ static TEST_LOG_ENABLED: Lazy<bool> = Lazy::new(|| {
 
 impl ::log::Log for SimpleLogger {
     fn enabled(&self, metadata: &::log::Metadata) -> bool {
-        metadata.target().starts_with("vreq")
+        metadata.target().starts_with("hreq")
     }
 
     fn log(&self, record: &::log::Record) {

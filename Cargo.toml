@@ -1,5 +1,5 @@
 [package]
-name = "vreq"
+name = "hreq"
 version = "1.0.0"
 authors = ["Martin Algesten <martin@lookback.io>"]
 edition = "2018"

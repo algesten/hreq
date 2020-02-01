@@ -197,13 +197,13 @@ impl BuilderStore {
     }
 }
 
-const VREQ_EXT_HEADER: &str = "x-vreq-ext";
+const HREQ_EXT_HEADER: &str = "x-hreq-ext";
 
 pub(crate) fn with_request_params<T, F: FnOnce(&RequestParams) -> T>(
     req: &http::Request<Body>,
     f: F,
 ) -> Option<T> {
-    if let Some(val) = req.headers().get(VREQ_EXT_HEADER) {
+    if let Some(val) = req.headers().get(HREQ_EXT_HEADER) {
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
         let lock = BUILDER_STORE.lock().unwrap();
         if let Some(store) = lock.get(&id) {
@@ -220,18 +220,18 @@ fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
 ) -> http::request::Builder {
     if let Some(headers) = builder.headers_mut() {
         let val = headers
-            .entry(VREQ_EXT_HEADER)
+            .entry(HREQ_EXT_HEADER)
             .or_insert_with(|| ID_COUNTER.fetch_add(1, Ordering::Relaxed).into());
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
         let mut lock = BUILDER_STORE.lock().unwrap();
-        let vreq_ext = lock.entry(id).or_insert_with(BuilderStore::new);
-        f(vreq_ext);
+        let hreq_ext = lock.entry(id).or_insert_with(BuilderStore::new);
+        f(hreq_ext);
     }
     builder
 }
 
-pub fn resolve_vreq_ext(parts: &mut http::request::Parts) -> Option<RequestParams> {
-    if let Some(val) = parts.headers.remove(VREQ_EXT_HEADER) {
+pub fn resolve_hreq_ext(parts: &mut http::request::Parts) -> Option<RequestParams> {
+    if let Some(val) = parts.headers.remove(HREQ_EXT_HEADER) {
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
         let mut lock = BUILDER_STORE.lock().unwrap();
         if let Some(store) = lock.remove(&id) {
