@@ -11,6 +11,7 @@ use futures_util::ready;
 use h2::RecvStream as H2RecvStream;
 use std::fmt;
 use std::fs;
+use std::future::Future;
 use std::io;
 use std::mem;
 use std::pin::Pin;
@@ -29,6 +30,7 @@ pub struct Body {
     char_codec: Option<CharCodec>,
     content_length: Option<usize>,
     deadline: Deadline,
+    deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
 }
 
@@ -63,6 +65,7 @@ impl Body {
             char_codec: None,
             content_length: None,
             deadline: Deadline::inert(),
+            deadline_fut: None,
             unfinished_recs: unfin,
         }
     }
@@ -350,7 +353,10 @@ impl AsyncRead for Body {
         if !this.has_read {
             this.has_read = true;
         }
-        if let Some(err) = this.deadline.check_time_left() {
+        if this.deadline_fut.is_none() {
+            this.deadline_fut = Some(this.deadline.delay_fut());
+        }
+        if let Poll::Ready(err) = this.deadline_fut.as_mut().unwrap().as_mut().poll(cx) {
             return Poll::Ready(Err(err));
         }
         let amount = ready!(if let Some(char_codec) = &mut this.char_codec {

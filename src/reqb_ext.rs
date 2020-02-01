@@ -99,6 +99,12 @@ impl RequestParams {
         }
     }
 
+    pub fn mark_request_start(&mut self) {
+        if self.req_start.is_none() {
+            self.req_start = Some(Instant::now());
+        }
+    }
+
     pub fn deadline(&self) -> Deadline {
         Deadline::new(self.req_start, self.timeout)
     }
@@ -150,15 +156,15 @@ impl BuilderStore {
 
 const HREQ_EXT_HEADER: &str = "x-hreq-ext";
 
-pub(crate) fn with_request_params<T, F: FnOnce(&RequestParams) -> T>(
+pub(crate) fn with_request_params<T, F: FnOnce(&mut RequestParams) -> T>(
     req: &http::Request<Body>,
     f: F,
 ) -> Option<T> {
     if let Some(val) = req.headers().get(HREQ_EXT_HEADER) {
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
-        let lock = BUILDER_STORE.lock().unwrap();
-        if let Some(store) = lock.get(&id) {
-            let t = f(&store.req_params);
+        let mut lock = BUILDER_STORE.lock().unwrap();
+        if let Some(store) = lock.get_mut(&id) {
+            let t = f(&mut store.req_params);
             return Some(t);
         }
     }

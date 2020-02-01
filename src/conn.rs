@@ -12,7 +12,6 @@ use once_cell::sync::Lazy;
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
 
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
@@ -93,9 +92,9 @@ impl Connection {
 
         let deadline = {
             // set req_start to be able to measure connection time
-            let ext = parts.extensions.get_mut::<RequestParams>().unwrap();
-            ext.req_start = Some(Instant::now());
-            ext.deadline()
+            let params = parts.extensions.get_mut::<RequestParams>().unwrap();
+            params.mark_request_start(); // this might be done already in the agent
+            params.deadline()
         };
 
         // if user set a length, we don't try to do any inferring

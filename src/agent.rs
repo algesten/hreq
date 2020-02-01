@@ -1,4 +1,5 @@
 use crate::connect;
+use crate::deadline::Deadline;
 use crate::reqb_ext::with_request_params;
 use crate::reqb_ext::RequestParams;
 use crate::uri_ext::UriExt;
@@ -59,6 +60,19 @@ impl<Tls: TlsConnector> Agent<Tls> {
     }
 
     pub async fn send(&mut self, req: http::Request<Body>) -> Result<http::Response<Body>, Error> {
+        // mark start of request
+        let deadline = with_request_params(&req, |params| {
+            params.mark_request_start();
+            params.deadline()
+        })
+        .unwrap_or_else(Deadline::inert);
+
+        // the request should be time limited regardless of retries. the entire do_send()
+        // is wrapped in a ticking timer...
+        deadline.race(self.do_send(req)).await
+    }
+
+    async fn do_send(&mut self, req: http::Request<Body>) -> Result<http::Response<Body>, Error> {
         let mut retries = self.retries;
         let mut redirects = self.redirects;
 

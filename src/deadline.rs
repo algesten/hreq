@@ -5,6 +5,7 @@ use futures_util::future::FutureExt;
 use futures_util::select;
 use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 const ZERO: Duration = Duration::from_millis(0);
@@ -39,25 +40,24 @@ impl Deadline {
         }
     }
 
-    pub fn check_time_left(&self) -> Option<io::Error> {
-        if let Some(remaining) = self.remaining() {
-            if remaining == ZERO {
-                return Some(io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+    pub fn delay_fut(&self) -> Pin<Box<dyn Future<Output = io::Error> + Send + Sync>> {
+        let delay = self.remaining();
+        let fut = async move {
+            if let Some(delay) = delay {
+                if delay > ZERO {
+                    AsyncRuntime::current().timeout(delay).await;
+                }
+            } else {
+                // never completes
+                never().await;
             }
-        }
-        None
+            io::Error::new(io::ErrorKind::TimedOut, "timeout")
+        };
+        Box::pin(fut)
     }
 
     async fn delay(&self) -> Error {
-        if let Some(delay) = self.remaining() {
-            if delay > ZERO {
-                AsyncRuntime::current().timeout(delay).await;
-            }
-        } else {
-            // never completes
-            never().await;
-        }
-        Error::Static("timeout")
+        self.delay_fut().await.into()
     }
 
     fn remaining(&self) -> Option<Duration> {

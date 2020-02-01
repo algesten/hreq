@@ -16,6 +16,22 @@ pub enum Error {
     StopTest,
 }
 
+impl Error {
+    pub fn is_io(&self) -> bool {
+        match self {
+            Error::Io(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn into_io(self) -> Option<io::Error> {
+        match self {
+            Error::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
