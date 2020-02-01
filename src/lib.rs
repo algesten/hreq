@@ -54,7 +54,10 @@ use tls_api::TlsConnector;
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl Stream for Box<dyn Stream> {}
 
-pub(crate) async fn connect<Tls: TlsConnector>(uri: &http::Uri) -> Result<Connection, Error> {
+pub(crate) async fn connect<Tls: TlsConnector>(
+    uri: &http::Uri,
+    force_http2: bool,
+) -> Result<Connection, Error> {
     let hostport = uri.host_port()?;
     // "host:port"
     let addr = hostport.to_string();
@@ -73,7 +76,13 @@ pub(crate) async fn connect<Tls: TlsConnector>(uri: &http::Uri) -> Result<Connec
         }
     };
 
-    open_stream(addr, stream, alpn_proto).await
+    let proto = if force_http2 {
+        Protocol::Http2
+    } else {
+        alpn_proto
+    };
+
+    open_stream(addr, stream, proto).await
 }
 
 pub(crate) async fn open_stream(

@@ -25,6 +25,7 @@ where
 {
     fn query(self, key: &str, value: &str) -> Self;
     fn timeout(self, duration: Duration) -> Self;
+    fn force_http2(self, force: bool) -> Self;
     fn with_body<B: Into<Body>>(self, body: B) -> http::Result<Request<Body>>;
 
     async fn send<B: Into<Body> + Send>(self, body: B) -> Result<Response<Body>, Error>;
@@ -48,6 +49,12 @@ impl RequestBuilderExt for request::Builder {
     fn timeout(self, duration: Duration) -> Self {
         with_builder_store(self, |store| {
             store.req_params.timeout = Some(duration);
+        })
+    }
+
+    fn force_http2(self, enabled: bool) -> Self {
+        with_builder_store(self, |store| {
+            store.req_params.force_http2 = enabled;
         })
     }
 
@@ -131,6 +138,7 @@ struct BuilderStore {
 pub struct RequestParams {
     pub req_start: Option<Instant>,
     pub timeout: Option<Duration>,
+    pub force_http2: bool,
 }
 
 impl RequestParams {
@@ -189,13 +197,30 @@ impl BuilderStore {
     }
 }
 
+const VREQ_EXT_HEADER: &str = "x-vreq-ext";
+
+pub(crate) fn with_request_params<T, F: FnOnce(&RequestParams) -> T>(
+    req: &http::Request<Body>,
+    f: F,
+) -> Option<T> {
+    if let Some(val) = req.headers().get(VREQ_EXT_HEADER) {
+        let id = val.to_str().unwrap().parse::<usize>().unwrap();
+        let lock = BUILDER_STORE.lock().unwrap();
+        if let Some(store) = lock.get(&id) {
+            let t = f(&store.req_params);
+            return Some(t);
+        }
+    }
+    None
+}
+
 fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
     mut builder: http::request::Builder,
     f: F,
 ) -> http::request::Builder {
     if let Some(headers) = builder.headers_mut() {
         let val = headers
-            .entry("x-vreq-ext")
+            .entry(VREQ_EXT_HEADER)
             .or_insert_with(|| ID_COUNTER.fetch_add(1, Ordering::Relaxed).into());
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
         let mut lock = BUILDER_STORE.lock().unwrap();
@@ -206,7 +231,7 @@ fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
 }
 
 pub fn resolve_vreq_ext(parts: &mut http::request::Parts) -> Option<RequestParams> {
-    if let Some(val) = parts.headers.remove("x-vreq-ext") {
+    if let Some(val) = parts.headers.remove(VREQ_EXT_HEADER) {
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
         let mut lock = BUILDER_STORE.lock().unwrap();
         if let Some(store) = lock.remove(&id) {

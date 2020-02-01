@@ -1,4 +1,5 @@
 use crate::connect;
+use crate::req_ext::with_request_params;
 use crate::req_ext::RequestParams;
 use crate::uri_ext::UriExt;
 use crate::Body;
@@ -45,9 +46,13 @@ impl<Tls: TlsConnector> Agent<Tls> {
             .find(|c| c.addr() == addr && (c.is_http2() || c.unfinished_requests() == 0)))
     }
 
-    async fn connect_and_pool(&mut self, uri: &http::Uri) -> Result<&mut Connection, Error> {
+    async fn connect_and_pool(
+        &mut self,
+        uri: &http::Uri,
+        force_http2: bool,
+    ) -> Result<&mut Connection, Error> {
         trace!("Connect new: {}", uri);
-        let conn = connect::<Tls>(uri).await?;
+        let conn = connect::<Tls>(uri, force_http2).await?;
         self.connections.push(conn);
         let idx = self.connections.len() - 1;
         Ok(self.connections.get_mut(idx).unwrap())
@@ -56,6 +61,8 @@ impl<Tls: TlsConnector> Agent<Tls> {
     pub async fn send(&mut self, req: http::Request<Body>) -> Result<http::Response<Body>, Error> {
         let mut retries = self.retries;
         let mut redirects = self.redirects;
+
+        let force_http2 = with_request_params(&req, |p| p.force_http2).unwrap_or(false);
 
         let mut next_req = req;
 
@@ -68,7 +75,7 @@ impl<Tls: TlsConnector> Agent<Tls> {
             // grab connection for the current request
             let conn = match self.reuse_from_pool(req.uri())? {
                 Some(conn) => conn,
-                None => self.connect_and_pool(req.uri()).await?,
+                None => self.connect_and_pool(req.uri(), force_http2).await?,
             };
 
             match conn.send_request(req).await {
