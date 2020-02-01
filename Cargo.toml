@@ -61,3 +61,6 @@ tls-api-rustls = { version = "*", optional = true }
 tide = "0.6.0"
 async-std-lib = { package = "async-std", version = "*", features = ["unstable"] }
 paste = "0.1.6"
+
+[package.metadata.docs.rs]
+all-features = true

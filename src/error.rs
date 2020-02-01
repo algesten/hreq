@@ -12,8 +12,6 @@ pub enum Error {
     Http11Parser(httparse::Error),
     H2(h2::Error),
     Http(http::Error),
-    #[cfg(test)]
-    StopTest,
 }
 
 impl Error {
@@ -42,8 +40,6 @@ impl fmt::Display for Error {
             Error::Http11Parser(v) => write!(f, "http11 parser: {}", v),
             Error::H2(v) => write!(f, "http2: {}", v),
             Error::Http(v) => write!(f, "http api: {}", v),
-            #[cfg(test)]
-            Error::StopTest => write!(f, "stop test"),
         }
     }
 }

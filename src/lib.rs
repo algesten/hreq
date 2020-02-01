@@ -1,4 +1,43 @@
 #![warn(clippy::all)]
+//! hreq is a user first async http client.
+//!
+//! The goals of this library are:
+//!
+//! * User first API built on the http crate.
+//! * Blocking or async.
+//! * Pure rust.
+//!
+//! ```no_run
+//! use hreq::prelude::*;
+//!
+//! fn main() -> Result<(), hreq::Error> {
+//!     // Use plain http API request builder with
+//!     // trait extensions for extra convenience
+//!     // in handling query parameters and other
+//!     // request configurations.
+//!     let response = Request::builder()
+//!         .uri("https://myapi.acme.com/ingest")
+//!         .query("api_key", "secret")
+//!         .send(()).block()?;
+//!
+//!     // More convenience on the http response.
+//!     // Like shortcuts to read or parse
+//!     // response headers.
+//!     let x_req_id =
+//!         response.header_as::<usize>("x-req-id")
+//!         .unwrap();
+//!
+//!     // A Body type with easy ways to
+//!     // get the content.
+//!     let mut body = response.into_body();
+//!     let contents = body.read_to_string().block()?;
+//!
+//!     assert_eq!(contents, "Hello world!");
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
 
 #[macro_use]
 extern crate log;
@@ -40,7 +79,19 @@ pub use crate::res_ext::ResponseExt;
 pub use http;
 
 pub mod prelude {
+    //! A "prelude" for users of the hreq crate.
+    //!
+    //! The idea is that by importing the entire contents of this module to get all the
+    //! essentials of the hreq crate.
+    //!
+    //! ```
+    //! # #![allow(warnings)]
+    //! use hreq::prelude::*;
+    //! ```
+
+    #[doc(no_inline)]
     pub use crate::{BlockExt, RequestBuilderExt, RequestExt, ResponseExt};
+    #[doc(no_inline)]
     pub use http::{Request, Response};
 }
 
