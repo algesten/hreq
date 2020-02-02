@@ -101,9 +101,9 @@ impl Agent {
                         }
 
                         // amend uri in next_req relative to the old request.
-                        let location = res
-                            .header("location")
-                            .ok_or_else(|| Error::Static("Redirect without Location header"))?;
+                        let location = res.header("location").ok_or_else(|| {
+                            Error::Message("Redirect without Location header".into())
+                        })?;
                         let (mut parts, body) = next_req.into_parts();
                         parts.uri = parts.uri.parse_relative(location)?;
                         next_req = http::Request::from_parts(parts, body);

@@ -10,7 +10,6 @@ use webpki::InvalidDNSNameError;
 #[derive(Debug)]
 pub enum Error {
     Message(String),
-    Static(&'static str),
     Io(io::Error),
     Http11Parser(httparse::Error),
     H2(h2::Error),
@@ -50,7 +49,6 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Message(v) => write!(f, "{}", v),
-            Error::Static(v) => write!(f, "{}", v),
             Error::Io(v) => fmt::Display::fmt(v, f),
             Error::Http11Parser(v) => write!(f, "http11 parser: {}", v),
             Error::H2(v) => write!(f, "http2: {}", v),

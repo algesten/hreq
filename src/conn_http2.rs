@@ -38,7 +38,7 @@ pub async fn send_request_http2(
                 send_body.reserve_capacity(left_to_send);
                 let actual_capacity = poll_fn(|cx| send_body.poll_capacity(cx))
                     .await
-                    .ok_or_else(|| Error::Static("Stream gone before capacity"))??;
+                    .ok_or_else(|| Error::Message("Stream gone before capacity".into()))??;
                 // let actual_capacity = fut_cap.await?;
                 send_body.send_data(
                     // h2::SendStream lacks a sync or async function that allows us
