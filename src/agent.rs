@@ -1,3 +1,5 @@
+//! Connection pooling, redirects, cookies etc.
+
 use crate::connect;
 use crate::deadline::Deadline;
 use crate::reqb_ext::with_request_params;
@@ -79,6 +81,9 @@ impl Agent {
         loop {
             let req = next_req;
 
+            // remember whether request is idempotent in case we are to retry
+            let is_idempotent = req.method().is_idempotent();
+
             // next_req holds our (potential) next request in case of redirects.
             next_req = clone_to_empty_body(&req);
 
@@ -125,7 +130,7 @@ impl Agent {
 
                     // retry?
                     retries -= 1;
-                    if retries == 0 {
+                    if retries == 0 || !is_idempotent {
                         break Err(err);
                     }
                 }
