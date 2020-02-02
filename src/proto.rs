@@ -9,7 +9,7 @@ pub const ALPN_H1: &[u8] = b"http/1.1";
 pub const ALPN_H2: &[u8] = b"h2";
 
 impl Protocol {
-    pub fn from_alpn(alpn: &Option<Vec<u8>>) -> Self {
+    pub fn from_alpn(alpn: Option<&[u8]>) -> Self {
         if let Some(v) = alpn {
             if v.len() == 8 && &v[..] == ALPN_H1 {
                 Protocol::Http11

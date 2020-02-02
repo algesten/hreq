@@ -6,11 +6,9 @@ edition = "2018"
 
 [features]
 default = [
-    # "tokio",
-    "async-std",
+    "tokio",
     "gzip",
-    "rustls",
-    # "tlsapi"
+    "tls"
 ]
 async-std = [
     "async-std-lib",
@@ -22,10 +20,11 @@ gzip = [
     "async-compression",
     "flate2"
 ]
-rustls = [
-    "tls-api-rustls"
+tls = [
+    "rustls",
+    "webpki",
+    "webpki-roots",
 ]
-tlsapi = []
 
 [dependencies]
 bytes = "*"
@@ -39,9 +38,8 @@ log = "*"
 once_cell = "*"
 qstring = "*"
 async-trait = "*"
-tls-api = "*"
 encoding_rs = "*"
-# We always need tokio asyncwrite/asyncread traits also for async-std because tlsapi.
+# We always need tokio asyncwrite/asyncread traits because h2 uses them.
 tokio-traits = { path = "./tokio-traits" }
 
 ## async-std
@@ -54,8 +52,10 @@ tokio-lib = { package = "tokio", version = "0.2", default-features = false, feat
 async-compression = { version = "*", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
 flate2 = { version = "*", default-features = false, features = [], optional = true }
 
-## rustls
-tls-api-rustls = { version = "*", optional = true }
+## tls
+rustls = { version = "0.16.0", default-features = false, features = [], optional = true }
+webpki = { version = "*", optional = true }
+webpki-roots = { version = "*", optional = true }
 
 [dev-dependencies]
 tide = "0.6.0"

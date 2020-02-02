@@ -41,7 +41,7 @@ impl Body {
 
     pub fn from_async_read<R>(reader: R, length: Option<u64>) -> Self
     where
-        R: AsyncRead + Unpin + Send + 'static,
+        R: AsyncRead + Unpin + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
         Self::new(BodyImpl::RequestAsyncRead(boxed), length, None)
@@ -49,7 +49,7 @@ impl Body {
 
     pub fn from_sync_read<R>(reader: R, length: Option<u64>) -> Self
     where
-        R: io::Read + Send + 'static,
+        R: io::Read + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
         Self::new(BodyImpl::RequestRead(boxed), length, None)
@@ -213,8 +213,8 @@ pub struct BodyReader {
 
 pub enum BodyImpl {
     RequestEmpty,
-    RequestAsyncRead(Box<dyn AsyncRead + Unpin + Send>),
-    RequestRead(Box<dyn io::Read + Send>),
+    RequestAsyncRead(Box<dyn AsyncRead + Unpin + Send + Sync>),
+    RequestRead(Box<dyn io::Read + Send + Sync>),
     Http1(H1RecvStream),
     Http2(H2RecvStream),
 }

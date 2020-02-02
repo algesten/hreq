@@ -7,24 +7,20 @@ use crate::Body;
 use crate::Connection;
 use crate::Error;
 use crate::ResponseExt;
-use std::marker::PhantomData;
-use tls_api::TlsConnector;
 
 #[derive(Default)]
-pub struct Agent<Tls: TlsConnector> {
+pub struct Agent {
     connections: Vec<Connection>,
     retries: usize,
     redirects: usize,
-    _ph: PhantomData<Tls>,
 }
 
-impl<Tls: TlsConnector> Agent<Tls> {
+impl Agent {
     pub fn new() -> Self {
         Agent {
             connections: vec![],
             retries: 5,
             redirects: 5,
-            _ph: PhantomData,
         }
     }
 
@@ -53,7 +49,7 @@ impl<Tls: TlsConnector> Agent<Tls> {
         force_http2: bool,
     ) -> Result<&mut Connection, Error> {
         trace!("Connect new: {}", uri);
-        let conn = connect::<Tls>(uri, force_http2).await?;
+        let conn = connect(uri, force_http2).await?;
         self.connections.push(conn);
         let idx = self.connections.len() - 1;
         Ok(self.connections.get_mut(idx).unwrap())

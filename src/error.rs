@@ -1,17 +1,24 @@
 use crate::h1;
 use std::fmt;
 use std::io;
-use tls_api::Error as TlsError;
+
+#[cfg(feature = "tls")]
+use rustls::TLSError;
+#[cfg(feature = "tls")]
+use webpki::InvalidDNSNameError;
 
 #[derive(Debug)]
 pub enum Error {
     Message(String),
     Static(&'static str),
     Io(io::Error),
-    TlsError(tls_api::Error),
     Http11Parser(httparse::Error),
     H2(h2::Error),
     Http(http::Error),
+    #[cfg(feature = "tls")]
+    TlsError(TLSError),
+    #[cfg(feature = "tls")]
+    DnsName(InvalidDNSNameError),
 }
 
 impl Error {
@@ -36,10 +43,13 @@ impl fmt::Display for Error {
             Error::Message(v) => write!(f, "{}", v),
             Error::Static(v) => write!(f, "{}", v),
             Error::Io(v) => fmt::Display::fmt(v, f),
-            Error::TlsError(v) => write!(f, "tls: {}", v),
             Error::Http11Parser(v) => write!(f, "http11 parser: {}", v),
             Error::H2(v) => write!(f, "http2: {}", v),
             Error::Http(v) => write!(f, "http api: {}", v),
+            #[cfg(feature = "tls")]
+            Error::TlsError(v) => write!(f, "tls: {}", v),
+            #[cfg(feature = "tls")]
+            Error::DnsName(v) => write!(f, "dns name: {}", v),
         }
     }
 }
@@ -60,12 +70,6 @@ impl<'a> From<&'a str> for Error {
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::Io(e)
-    }
-}
-
-impl From<TlsError> for Error {
-    fn from(e: TlsError) -> Self {
-        Error::TlsError(e)
     }
 }
 
@@ -93,5 +97,19 @@ impl From<h2::Error> for Error {
 impl From<http::Error> for Error {
     fn from(e: http::Error) -> Self {
         Error::Http(e)
+    }
+}
+
+#[cfg(feature = "tls")]
+impl From<TLSError> for Error {
+    fn from(e: TLSError) -> Self {
+        Error::TlsError(e)
+    }
+}
+
+#[cfg(feature = "tls")]
+impl From<InvalidDNSNameError> for Error {
+    fn from(e: InvalidDNSNameError) -> Self {
+        Error::DnsName(e)
     }
 }

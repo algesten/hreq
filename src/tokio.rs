@@ -44,7 +44,12 @@ impl<Z: TokioAsyncWrite + Unpin> AsyncWrite for FromAdapter<Z> {
     }
 }
 
-impl<Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static> Stream for FromAdapter<Z> {}
+impl<Z> Stream for FromAdapter<Z>
+where
+    Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static,
+{
+    //
+}
 
 pub(crate) fn to_tokio<S: Stream>(adapted: S) -> TokioStream<S> {
     TokioStream { adapted }

@@ -47,7 +47,8 @@ What are we doing?
 - [ ] Expect-100 and 307/308 redirects.
 - [ ] HTTP Proxy
 - [ ] Upstream PassTlsConnector
-- [ ] Investigate why TlsApi wants a Sync stream.
+- [x] Investigate why tls-api wants a Sync stream.
+  - [x] Replace tls-api with with plain rustls.
 - [x] Cleanup Errors (implement Display proper)
 - [x] Don't send a body in HEAD/OPTIONS etc.
 - [ ] Set is_finished early if not content in response

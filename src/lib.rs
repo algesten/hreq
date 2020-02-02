@@ -58,10 +58,11 @@ mod proto;
 mod req_ext;
 mod reqb_ext;
 mod res_ext;
-mod tls;
-mod tls_pass;
 mod tokio;
 mod uri_ext;
+
+#[cfg(feature = "tls")]
+mod tls;
 
 #[cfg(all(test, feature = "async-std"))]
 mod test;
@@ -97,20 +98,14 @@ pub mod prelude {
 
 use crate::conn::Connection;
 use crate::conn::ProtocolImpl;
-use crate::either::Either;
 use crate::proto::Protocol;
-use crate::tls::wrap_tls;
 use crate::tokio::to_tokio;
 use crate::uri_ext::UriExt;
-use tls_api::TlsConnector;
 
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl Stream for Box<dyn Stream> {}
 
-pub(crate) async fn connect<Tls: TlsConnector>(
-    uri: &http::Uri,
-    force_http2: bool,
-) -> Result<Connection, Error> {
+pub(crate) async fn connect(uri: &http::Uri, force_http2: bool) -> Result<Connection, Error> {
     let hostport = uri.host_port()?;
     // "host:port"
     let addr = hostport.to_string();
@@ -119,14 +114,22 @@ pub(crate) async fn connect<Tls: TlsConnector>(
         // "raw" tcp
         let tcp = AsyncRuntime::current().connect_tcp(&addr).await?;
 
-        if hostport.is_tls() {
-            // wrap in tls
-            let (tls, proto) = wrap_tls::<Tls, _>(tcp, hostport.host()).await?;
-            (Either::A(tls), proto)
-        } else {
-            // use tcp
-            (Either::B(tcp), Protocol::Unknown)
+        #[cfg(feature = "tls")]
+        {
+            use crate::either::Either;
+            use crate::tls::wrap_tls;
+            if hostport.is_tls() {
+                // wrap in tls
+                let (tls, proto) = wrap_tls(tcp, hostport.host()).await?;
+                (Either::A(tls), proto)
+            } else {
+                // use tcp
+                (Either::B(tcp), Protocol::Unknown)
+            }
         }
+
+        #[cfg(not(feature = "tls"))]
+        (tcp, Protocol::Unknown)
     };
 
     let proto = if force_http2 {

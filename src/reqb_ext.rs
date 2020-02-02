@@ -13,9 +13,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "tlsapi")]
-use tls_api::TlsConnector;
-
 #[async_trait]
 pub trait RequestBuilderExt
 where
@@ -27,12 +24,6 @@ where
     fn with_body<B: Into<Body>>(self, body: B) -> http::Result<Request<Body>>;
 
     async fn send<B: Into<Body> + Send>(self, body: B) -> Result<Response<Body>, Error>;
-
-    #[cfg(feature = "tlsapi")]
-    async fn send_tls<B, Tls>(self, body: B) -> Result<Response<Body>, Error>
-    where
-        B: Into<Body> + Send,
-        Tls: TlsConnector;
 }
 
 #[async_trait]
@@ -63,16 +54,6 @@ impl RequestBuilderExt for request::Builder {
     async fn send<B: Into<Body> + Send>(self, body: B) -> Result<Response<Body>, Error> {
         let req = self.with_body(body)?;
         Ok(req.send().await?)
-    }
-
-    #[cfg(feature = "tlsapi")]
-    async fn send_tls<B, Tls>(self, body: B) -> Result<Response<Body>, Error>
-    where
-        B: Into<Body> + Send,
-        Tls: TlsConnector,
-    {
-        let req = self.with_body(body)?;
-        Ok(req.send_tls::<Tls>().await?)
     }
 }
 
