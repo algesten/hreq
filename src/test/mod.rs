@@ -17,7 +17,7 @@ mod timeout;
 pub fn test_setup() {
     simplelog::set_logger();
     // We're using async-std for the tests because that's what tide uses.
-    AsyncRuntime::set_default(AsyncRuntime::AsyncStd);
+    AsyncRuntime::set_default(AsyncRuntime::AsyncStd, None);
 }
 
 #[allow(clippy::type_complexity)]

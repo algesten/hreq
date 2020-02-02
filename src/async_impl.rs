@@ -1,3 +1,5 @@
+//! pluggable runtimes
+
 use crate::Error;
 use crate::Stream;
 use futures_util::future::poll_fn;
@@ -7,6 +9,11 @@ use std::task::Poll;
 use std::time::Duration;
 
 use once_cell::sync::Lazy;
+
+#[cfg(feature = "tokio")]
+use tokio_lib::runtime::Runtime as TokioRuntime;
+
+// TODO: This whole file is a bit of a mess. Needs refactoring.
 
 static CURRENT_RUNTIME: Lazy<Mutex<AsyncRuntime>> = Lazy::new(|| {
     if cfg!(feature = "tokio") {
@@ -19,7 +26,27 @@ static CURRENT_RUNTIME: Lazy<Mutex<AsyncRuntime>> = Lazy::new(|| {
     panic!("No default async runtime. Use cargo feature 'async-std' or 'tokio'");
 });
 
-#[derive(Clone, Copy)]
+static TOKIO_OWNED_RUNTIME: Lazy<Mutex<Option<TokioRuntime>>> = Lazy::new(|| Mutex::new(None));
+
+/// Switches between different async runtimes.
+///
+/// This is a global singleton.
+///
+/// hreq supports async-std and tokio. Tokio support is enabled by default and comes in some
+/// different flavors.
+///
+///   * `AsyncStd`. Requires the feature `async-std`. Supports `.block()`.
+///   * `TokioDefault`. The default option. A minimal tokio `rt-core` which executes calls
+///     in one single thread. It does nothing until the current thread blocks on
+///     a future using `.block()`.
+///   * `TokioShared`. Picks up on a shared runtime by using a [`Handle`]. This runtime
+///     cannot use the `.block()` extension trait since that requires having a direct
+///     connection to the tokio [`Runtime`].
+///   * `TokioOwned`. Uses a preconfigured tokio [`Runtime`] that is "handed over" to hreq.
+///
+/// [`Handle`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Handle.html
+/// [`Runtime`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Runtime.html
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AsyncRuntime {
     #[cfg(feature = "async-std")]
     AsyncStd,
@@ -27,12 +54,39 @@ pub enum AsyncRuntime {
     TokioDefault,
     #[cfg(feature = "tokio")]
     TokioShared,
+    #[cfg(feature = "tokio")]
+    TokioOwned,
 }
 
 impl AsyncRuntime {
-    pub fn set_default(rt: Self) {
+    /// Sets the runtime global singleton.
+    ///
+    /// The `owned` parameter must be used together with `TokioOwned`, all other runtimes must
+    /// have `None` as the second argument.
+    ///
+    /// Panics on an incorrect combination of first/second argument.
+    ///
+    /// ```no_run
+    /// use hreq::AsyncRuntime;
+    ///
+    /// AsyncRuntime::set_default(AsyncRuntime::TokioShared, None);
+    /// ```
+    pub fn set_default(rt: Self, owned: Option<TokioRuntime>) {
         let mut ptr = CURRENT_RUNTIME.lock().unwrap();
         *ptr = rt;
+        if rt == AsyncRuntime::TokioOwned {
+            if let Some(owned) = owned {
+                let mut lock = TOKIO_OWNED_RUNTIME.lock().unwrap();
+                *lock = Some(owned);
+            } else {
+                panic!("AsyncRuntime::set_default {:?} without TokioRuntime", rt);
+            }
+        } else if owned.is_some() {
+            panic!("AsyncRuntime::set_default {:?} with TokioRuntime", rt);
+        } else {
+            let mut lock = TOKIO_OWNED_RUNTIME.lock().unwrap();
+            *lock = None;
+        }
     }
 
     pub(crate) fn current() -> Self {
@@ -45,18 +99,18 @@ impl AsyncRuntime {
             use crate::either::Either;
             match self {
                 AsyncRuntime::AsyncStd => Ok(Either::A(async_std::connect_tcp(addr).await?)),
-                AsyncRuntime::TokioDefault => Ok(Either::B(async_tokio::connect_tcp(addr).await?)),
-                AsyncRuntime::TokioShared => Ok(Either::B(async_tokio::connect_tcp(addr).await?)),
+                AsyncRuntime::TokioDefault
+                | AsyncRuntime::TokioShared
+                | AsyncRuntime::TokioOwned => Ok(Either::B(async_tokio::connect_tcp(addr).await?)),
             }
         }
         #[cfg(all(feature = "async-std", not(feature = "tokio")))]
-        match self {
-            AsyncRuntime::AsyncStd => Ok(async_std::connect_tcp(addr).await?),
+        {
+            Ok(async_std::connect_tcp(addr).await?)
         }
         #[cfg(all(feature = "tokio", not(feature = "async-std")))]
-        match self {
-            AsyncRuntime::TokioDefault => Ok(async_tokio::connect_tcp(addr).await?),
-            AsyncRuntime::TokioShared => Ok(async_tokio::connect_tcp(addr).await?),
+        {
+            Ok(async_tokio::connect_tcp(addr).await?)
         }
     }
 
@@ -65,9 +119,9 @@ impl AsyncRuntime {
             #[cfg(feature = "async-std")]
             AsyncRuntime::AsyncStd => async_std::timeout(duration).await,
             #[cfg(feature = "tokio")]
-            AsyncRuntime::TokioDefault => async_tokio::timeout(duration).await,
-            #[cfg(feature = "tokio")]
-            AsyncRuntime::TokioShared => async_tokio::timeout(duration).await,
+            AsyncRuntime::TokioDefault | AsyncRuntime::TokioShared | AsyncRuntime::TokioOwned => {
+                async_tokio::timeout(duration).await
+            }
         }
     }
 
@@ -83,6 +137,21 @@ impl AsyncRuntime {
                     task.await;
                 });
             }
+            #[cfg(feature = "tokio")]
+            AsyncRuntime::TokioOwned => {
+                let handle = {
+                    TOKIO_OWNED_RUNTIME
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .handle()
+                        .clone()
+                };
+                handle.spawn(async move {
+                    task.await;
+                });
+            }
         }
     }
 
@@ -95,6 +164,12 @@ impl AsyncRuntime {
             #[cfg(feature = "tokio")]
             AsyncRuntime::TokioShared => {
                 panic!("Blocking is not possible with a shared tokio runtime")
+            }
+            #[cfg(feature = "tokio")]
+            AsyncRuntime::TokioOwned => {
+                let mut lock = TOKIO_OWNED_RUNTIME.lock().unwrap();
+                let rt = lock.as_mut().unwrap();
+                rt.block_on(future)
             }
         }
     }
@@ -112,6 +187,10 @@ pub(crate) mod async_std {
         Ok(TcpStream::connect(addr).await?)
     }
 
+    pub async fn timeout(duration: Duration) {
+        async_std_lib::future::timeout(duration, never()).await.ok();
+    }
+
     pub fn spawn<T>(task: T)
     where
         T: Future + Send + 'static,
@@ -119,10 +198,6 @@ pub(crate) mod async_std {
         async_std_lib::task::spawn(async move {
             task.await;
         });
-    }
-
-    pub async fn timeout(duration: Duration) {
-        async_std_lib::future::timeout(duration, never()).await.ok();
     }
 
     pub fn block_on<F: Future>(future: F) -> F::Output {
