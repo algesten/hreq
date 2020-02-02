@@ -35,6 +35,15 @@ impl Error {
             _ => None,
         }
     }
+
+    pub fn is_timeout(&self) -> bool {
+        if let Error::Io(e) = self {
+            if e.kind() == io::ErrorKind::TimedOut {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl fmt::Display for Error {
