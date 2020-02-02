@@ -39,6 +39,20 @@ impl Body {
         Self::new(BodyImpl::RequestEmpty, Some(0), None)
     }
 
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(text: &str) -> Self {
+        Self::from_vec(text.to_owned().into_bytes())
+    }
+
+    pub fn from_string(text: String) -> Self {
+        Self::from_vec(text.into_bytes())
+    }
+
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        let len = bytes.len() as u64;
+        Self::from_sync_read(io::Cursor::new(bytes), Some(len))
+    }
+
     pub fn from_async_read<R>(reader: R, length: Option<u64>) -> Self
     where
         R: AsyncRead + Unpin + Send + Sync + 'static,
@@ -330,9 +344,7 @@ impl<'a> From<&'a [u8]> for Body {
 
 impl From<Vec<u8>> for Body {
     fn from(bytes: Vec<u8>) -> Self {
-        let len = bytes.len() as u64;
-        let cursor = io::Cursor::new(bytes);
-        Body::from_sync_read(cursor, Some(len))
+        Body::from_vec(bytes)
     }
 }
 
