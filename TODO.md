@@ -7,7 +7,7 @@ What are we doing?
 - [x] Request/response body
 - [x] Resolve DNS (dns-lookup)
 - [x] Timeout for entire request.
-  - [ ] Propagate timeout to socket itself
+  - [ ] Propagate timeout to socket itself?
 - [x] Connect socket … or is this API surface?
 - [x] Wrap socket in SSL (tls-api)
 - [x] Talk http1 (write own h1, httparse)
@@ -46,11 +46,27 @@ What are we doing?
 - [x] Follow redirects
 - [ ] Expect-100 and 307/308 redirects.
 - [ ] HTTP Proxy
-- [ ] Upstream PassTlsConnector
 - [x] Investigate why tls-api wants a Sync stream.
   - [x] Replace tls-api with with plain rustls.
 - [x] Cleanup Errors (implement Display proper)
 - [x] Don't send a body in HEAD/OPTIONS etc.
 - [ ] Set is_finished early if not content in response
 - [ ] Tests
+  - [x] Basic GET with query params
+  - [x] Basic GET with headers
+  - [x] Timeout
+  - [ ] POST with small body
+  - [ ] POST with large body
+  - [ ] POST without content length (chunked http11)
+  - [ ] Charset decode
+  - [ ] gzip encoding
+  - [ ] gzip decode
+  - [ ] Download large body
+  - [ ] Follow redirects
+  - [ ] Retries
+  - [ ] 1_000_000 URLs?
 - [ ] Doc
+- [ ] Metadata gathering through request
+- [ ] Make character sets optional (utf-8 only)
+- [ ] Flush after sending body
+- [ ] More compressions?
