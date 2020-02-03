@@ -188,6 +188,7 @@ impl RequestBuilderExt for request::Builder {
     }
 }
 
+const HREQ_EXT_HEADER: &str = "x-hreq-ext";
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 static BUILDER_STORE: Lazy<Mutex<HashMap<usize, BuilderStore>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -216,13 +217,13 @@ pub struct RequestParams {
 }
 
 impl RequestParams {
-    pub fn new() -> Self {
+    fn new() -> Self {
         RequestParams {
             ..Default::default()
         }
     }
 
-    pub fn mark_request_start(&mut self) {
+    fn mark_request_start(&mut self) {
         if self.req_start.is_none() {
             self.req_start = Some(Instant::now());
         }
@@ -277,24 +278,6 @@ impl BuilderStore {
     }
 }
 
-const HREQ_EXT_HEADER: &str = "x-hreq-ext";
-
-/// Get the current request parameters associated with the request.
-pub(crate) fn with_request_params<T, F: FnOnce(&mut RequestParams) -> T>(
-    req: &http::Request<Body>,
-    f: F,
-) -> Option<T> {
-    if let Some(val) = req.headers().get(HREQ_EXT_HEADER) {
-        let id = val.to_str().unwrap().parse::<usize>().unwrap();
-        let mut lock = BUILDER_STORE.lock().unwrap();
-        if let Some(store) = lock.get_mut(&id) {
-            let t = f(&mut store.req_params);
-            return Some(t);
-        }
-    }
-    None
-}
-
 fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
     mut builder: http::request::Builder,
     f: F,
@@ -311,15 +294,20 @@ fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
     builder
 }
 
-/// Apply the parameters in the separate storage before executing the request.
-pub fn resolve_hreq_ext(parts: &mut http::request::Parts) -> Option<RequestParams> {
+/// Apply the parameters held in the separate storage.
+pub fn resolve_hreq_ext(req: http::request::Request<Body>) -> http::request::Request<Body> {
+    let (mut parts, body) = req.into_parts();
+    let mut req_params = None;
     if let Some(val) = parts.headers.remove(HREQ_EXT_HEADER) {
         let id = val.to_str().unwrap().parse::<usize>().unwrap();
         let mut lock = BUILDER_STORE.lock().unwrap();
         if let Some(store) = lock.remove(&id) {
-            let req_params = store.invoke(parts);
-            return Some(req_params);
+            req_params = Some(store.invoke(&mut parts))
         }
     }
-    None
+    let mut req_params = req_params.unwrap_or_else(RequestParams::new);
+    req_params.mark_request_start();
+    // after this we get the request parameters from the req.extensions()
+    parts.extensions.insert(req_params);
+    http::Request::from_parts(parts, body)
 }

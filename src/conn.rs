@@ -1,7 +1,6 @@
 use crate::conn_http1::send_request_http1;
 use crate::conn_http2::send_request_http2;
 use crate::h1::SendRequest as H1SendRequest;
-use crate::reqb_ext::resolve_hreq_ext;
 use crate::reqb_ext::RequestParams;
 use crate::uri_ext::MethodExt;
 use crate::Body;
@@ -83,19 +82,8 @@ impl Connection {
 
         let (mut parts, mut body) = req.into_parts();
 
-        // apply hreq request builder extensions.
-        if let Some(req_params) = resolve_hreq_ext(&mut parts) {
-            parts.extensions.insert(req_params);
-        } else {
-            parts.extensions.insert(RequestParams::new());
-        }
-
-        let deadline = {
-            // set req_start to be able to measure connection time
-            let params = parts.extensions.get_mut::<RequestParams>().unwrap();
-            params.mark_request_start(); // this might be done already in the agent
-            params.deadline()
-        };
+        let params = *parts.extensions.get::<RequestParams>().unwrap();
+        let deadline = params.deadline();
 
         // if user set a length, we don't try to do any inferring
         let user_set_length = parts.headers.get("content-length").is_some();

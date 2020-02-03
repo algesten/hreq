@@ -1,8 +1,7 @@
 //! Connection pooling, redirects, cookies etc.
 
 use crate::connect;
-use crate::deadline::Deadline;
-use crate::reqb_ext::with_request_params;
+use crate::reqb_ext::resolve_hreq_ext;
 use crate::reqb_ext::RequestParams;
 use crate::uri_ext::UriExt;
 use crate::Body;
@@ -159,22 +158,21 @@ impl Agent {
     /// assert!(res.unwrap_err().is_io());
     /// ```
     pub async fn send(&mut self, req: http::Request<Body>) -> Result<http::Response<Body>, Error> {
-        // mark start of request
-        let (deadline, force_http2) = with_request_params(&req, |params| {
-            params.mark_request_start();
-            (params.deadline(), params.force_http2)
-        })
-        .unwrap_or_else(|| (Deadline::inert(), false));
+        // apply the parameters held in a separate storage
+        let req = resolve_hreq_ext(req);
+
+        let params = *req.extensions().get::<RequestParams>().unwrap();
 
         // the request should be time limited regardless of retries. the entire do_send()
         // is wrapped in a ticking timer...
-        deadline.race(self.do_send(req, force_http2)).await
+        let deadline = params.deadline();
+        deadline.race(self.do_send(req, params)).await
     }
 
     async fn do_send(
         &mut self,
         req: http::Request<Body>,
-        force_http2: bool,
+        params: RequestParams,
     ) -> Result<http::Response<Body>, Error> {
         let mut retries = self.retries;
         let mut redirects = self.redirects;
@@ -197,9 +195,9 @@ impl Agent {
                 Some(conn) => conn,
                 None => {
                     if pooling {
-                        self.connect_and_pool(req.uri(), force_http2).await?
+                        self.connect_and_pool(req.uri(), params.force_http2).await?
                     } else {
-                        let conn = connect(req.uri(), force_http2).await?;
+                        let conn = connect(req.uri(), params.force_http2).await?;
                         unpooled.replace(conn);
                         unpooled.as_mut().unwrap()
                     }
