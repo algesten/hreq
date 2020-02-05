@@ -26,6 +26,7 @@ pub async fn send_request_http2(
     let (fut_res, mut send_body) = h2.send_request(req, no_body)?;
 
     if !no_body {
+        // this buffer must be less than h2 window size
         let mut buf = vec![0_u8; BUF_SIZE];
         loop {
             let amount_read = body_read.read(&mut buf[..]).await?;
@@ -35,10 +36,20 @@ pub async fn send_request_http2(
             let mut amount_sent = 0;
             loop {
                 let left_to_send = amount_read - amount_sent;
+                if left_to_send == 0 {
+                    break;
+                }
                 send_body.reserve_capacity(left_to_send);
-                let actual_capacity = poll_fn(|cx| send_body.poll_capacity(cx))
-                    .await
-                    .ok_or_else(|| Error::Message("Stream gone before capacity".into()))??;
+                let actual_capacity = {
+                    let cur = send_body.capacity();
+                    if cur > 0 {
+                        cur
+                    } else {
+                        poll_fn(|cx| send_body.poll_capacity(cx))
+                            .await
+                            .ok_or_else(|| Error::Message("Stream gone before capacity".into()))??
+                    }
+                };
                 // let actual_capacity = fut_cap.await?;
                 send_body.send_data(
                     // h2::SendStream lacks a sync or async function that allows us
