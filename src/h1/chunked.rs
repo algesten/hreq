@@ -171,7 +171,7 @@ pub struct ChunkedEncoder;
 impl ChunkedEncoder {
     pub fn write_chunk(buf: &[u8], out: &mut Vec<u8>) -> Result<(), Error> {
         let mut cur = io::Cursor::new(out);
-        let header = format!("{}\r\n", buf.len()).into_bytes();
+        let header = format!("{:x}\r\n", buf.len()).into_bytes();
         cur.write_all(&header[..])?;
         cur.write_all(&buf[..])?;
         const CRLF: &[u8] = b"\r\n";
