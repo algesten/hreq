@@ -55,9 +55,9 @@ What are we doing?
   - [x] Basic GET with query params
   - [x] Basic GET with headers
   - [x] Timeout
-  - [ ] POST with small body
-  - [ ] POST with large body
-  - [ ] POST without content length (chunked http11)
+  - [x] POST with small body
+  - [x] POST with large body
+  - [x] POST without content length (chunked http11)
   - [ ] Charset decode
   - [ ] gzip encoding
   - [ ] gzip decode

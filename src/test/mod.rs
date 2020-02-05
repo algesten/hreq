@@ -5,12 +5,14 @@ use crate::Error;
 use async_std_lib::sync::channel;
 use futures_util::future::FutureExt;
 use futures_util::select;
+use std::future::Future;
 use std::io;
 use std::net;
 use std::sync::Mutex;
 use tide;
 
 mod basic;
+mod post;
 mod simplelog;
 mod timeout;
 
@@ -21,12 +23,15 @@ pub fn test_setup() {
 }
 
 #[allow(clippy::type_complexity)]
-pub fn run_server<Res>(
+pub fn run_server<'a, Res, Acc, Fut>(
     req: http::Request<Body>,
     res: Res,
+    accept_req: Acc,
 ) -> Result<(http::Request<()>, http::Response<()>, Vec<u8>), Error>
 where
     Res: tide::IntoResponse + 'static,
+    Acc: (FnOnce(tide::Request<()>) -> Fut) + Send + 'static,
+    Fut: Future<Output = tide::Request<()>> + Send + 'a,
 {
     test_setup();
     AsyncRuntime::current().block_on(async {
@@ -37,13 +42,16 @@ where
         // channel where we shut down tide server using select! macro
         let (txend, rxend) = channel::<()>(1);
 
+        let accept_req_once = Mutex::new(Some(accept_req));
         let res_mut = Mutex::new(Some(res));
 
         let mut app = tide::new();
-        app.at("/*path").all(move |req| {
+        app.at("/*path").all(move |req: tide::Request<()>| {
             let txsreq = txsreq.clone();
+            let accept_req = accept_req_once.lock().unwrap().take().unwrap();
             let res = res_mut.lock().unwrap().take();
             async move {
+                let req = accept_req(req).await;
                 txsreq.send(req).await;
                 if let Some(res) = res {
                     res
@@ -161,6 +169,12 @@ fn normalize_tide_request(tide_req: tide::Request<()>) -> http::Request<()> {
         .map(|pq| pq.as_str())
         .expect("Test bad tide pq");
     let mut server_req = http::Request::builder()
+        .version(match tide_req.version() {
+            tide::http::Version::HTTP_09 => http::Version::HTTP_09,
+            tide::http::Version::HTTP_10 => http::Version::HTTP_10,
+            tide::http::Version::HTTP_11 => http::Version::HTTP_11,
+            tide::http::Version::HTTP_2 => http::Version::HTTP_2,
+        })
         .method(tide_req.method().as_str())
         .uri(pq);
     for (k, v) in tide_req.headers().clone().into_iter() {

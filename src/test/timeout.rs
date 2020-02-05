@@ -29,7 +29,11 @@ test_h1_h2! {
                 .uri("/path")
                 .timeout(Duration::from_millis(200))
                 .body(Body::from_async_read(NeverRead, None))?;
-            let res = run_server(req, "Ok");
+            let res = run_server(req, "Ok", |tide_req| {
+                async move {
+                    tide_req
+                }
+            });
             assert!(res.is_err());
             let err = res.unwrap_err();
             assert!(err.is_io());
@@ -45,7 +49,11 @@ test_h1_h2! {
                 .timeout(Duration::from_millis(200))
                 .body(().into())?;
             let resp = tide::Response::with_reader(200, BufReader::new(NeverRead));
-            let res = run_server(req, resp);
+            let res = run_server(req, resp, |tide_req| {
+                async move {
+                    tide_req
+                }
+            });
             assert!(res.is_err());
             let err = res.unwrap_err();
             assert!(err.is_io());

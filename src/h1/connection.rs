@@ -83,7 +83,6 @@ where
                     }
                 };
             } else {
-                trace!("Connection Poll::Pending");
                 break Poll::Pending;
             }
         }
@@ -157,8 +156,9 @@ impl ConnectionPoll for SendBody {
 
         if self.end {
             *state = State::Waiting;
-            self.info.complete = true;
         }
+
+        self.info.complete = true;
 
         Ok(()).into()
     }

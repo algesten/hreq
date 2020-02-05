@@ -25,10 +25,10 @@ const BUF_SIZE: usize = 16_384;
 
 pub struct Body {
     codec: BufReader<BodyCodec>,
-    length: Option<u64>,
+    length: Option<u64>, // incoming length if given with reader
     has_read: bool,
     char_codec: Option<CharCodec>,
-    content_length: Option<usize>,
+    content_length: Option<usize>, // content-length header in configure()
     deadline: Deadline,
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
