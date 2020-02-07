@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use tide;
 
 mod basic;
+mod charset;
 mod post;
 mod simplelog;
 mod timeout;
