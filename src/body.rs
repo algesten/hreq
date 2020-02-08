@@ -307,16 +307,16 @@ impl AsyncRead for BodyReader {
             BodyImpl::Http2(recv) => {
                 if let Some(data) = ready!(recv.poll_data(cx)) {
                     let data = data.map_err(|e| {
-                        e.into_io().unwrap_or_else(|| {
-                            io::Error::new(io::ErrorKind::Other, "Other h2 error")
-                        })
+                        let other = format!("Other h2 error (poll_data): {}", e);
+                        e.into_io()
+                            .unwrap_or_else(|| io::Error::new(io::ErrorKind::Other, other))
                     })?;
                     recv.flow_control()
                         .release_capacity(data.len())
                         .map_err(|e| {
-                            e.into_io().unwrap_or_else(|| {
-                                io::Error::new(io::ErrorKind::Other, "Other h2 error")
-                            })
+                            let other = format!("Other h2 error (release_capacity): {}", e);
+                            e.into_io()
+                                .unwrap_or_else(|| io::Error::new(io::ErrorKind::Other, other))
                         })?;
                     this.bytes_to_buf(data, buf)
                 } else {
