@@ -82,6 +82,8 @@ pub trait HeaderMapExt {
     fn get_str(&self, key: &str) -> Option<&str>;
 
     fn get_as<T: FromStr>(&self, key: &str) -> Option<T>;
+
+    fn set<T: Into<String>>(&mut self, key: &'static str, key: T);
 }
 
 impl HeaderMapExt for http::HeaderMap {
@@ -92,5 +94,12 @@ impl HeaderMapExt for http::HeaderMap {
 
     fn get_as<T: FromStr>(&self, key: &str) -> Option<T> {
         self.get_str(key).and_then(|v| v.parse().ok())
+    }
+
+    fn set<T: Into<String>>(&mut self, key: &'static str, value: T) {
+        let s: String = value.into();
+        let header = s.parse().unwrap();
+
+        self.insert(key, header);
     }
 }

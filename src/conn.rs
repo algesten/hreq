@@ -2,6 +2,7 @@ use crate::conn_http1::send_request_http1;
 use crate::conn_http2::send_request_http2;
 use crate::h1::SendRequest as H1SendRequest;
 use crate::reqb_ext::RequestParams;
+use crate::res_ext::HeaderMapExt;
 use crate::uri_ext::MethodExt;
 use crate::Body;
 use crate::Error;
@@ -96,17 +97,14 @@ impl Connection {
             let user_set_length = parts.headers.get("content-length").is_some();
 
             if !user_set_length && (len > 0 || parts.method.indicates_body()) {
-                let len_h = len.to_string().parse().unwrap();
-                parts.headers.insert("content-length", len_h);
+                parts.headers.set("content-length", len.to_string());
             }
         } else if !self.is_http2() && parts.method.indicates_body() {
             // body does not indicate a length (like from a reader),
             // and method indicates there really is one.
             // we chose chunked.
-            let user_set_tranfer_enc = parts.headers.get("transfer-encoding").is_some();
-            if !user_set_tranfer_enc {
-                let chunked = "chunked".parse().unwrap();
-                parts.headers.insert("transfer-encoding", chunked);
+            if parts.headers.get("transfer-encoding").is_none() {
+                parts.headers.set("transfer-encoding", "chunked");
             }
         }
 
