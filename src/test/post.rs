@@ -1,48 +1,21 @@
 use super::run_server;
+use super::DataGenerator;
 use crate::prelude::*;
 use crate::test_h1_h2;
 use crate::AsyncRead;
 use crate::Body;
 use crate::Error;
 use futures_util::future::poll_fn;
-use std::fs::File;
-use std::io;
 use std::pin::Pin;
 
-#[derive(Debug)]
-struct DataGenerator {
-    rand: File,
-    total: usize,
-    produced: usize,
-}
-
-impl DataGenerator {
-    fn new(total: usize) -> Self {
-        DataGenerator {
-            rand: File::open("/dev/random").unwrap(),
-            total,
-            produced: 0,
-        }
-    }
-}
-
-impl io::Read for DataGenerator {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let max = buf.len().min(self.total - self.produced);
-        let amount = self.rand.read(&mut buf[..max])?;
-        self.produced += amount;
-        Ok(amount)
-    }
-}
-
 test_h1_h2! {
-    fn body1kb_with_size() -> Result<(), Error> {
+    fn req_body1kb_with_size() -> Result<(), Error> {
         |bld: http::request::Builder| {
             const AMOUNT: usize = 1024;
             let data = DataGenerator::new(AMOUNT);
             let req = bld
                 .method("POST")
-                .uri("/body10mb")
+                .uri("/body1kb")
                 .body(Body::from_sync_read(data, Some(AMOUNT as u64)))?;
             let (server_req, client_res, _client_bytes) = run_server(req, "Ok", |mut tide_req| {
                 async {
@@ -65,7 +38,7 @@ test_h1_h2! {
         }
     }
 
-    fn body10mb_no_size() -> Result<(), Error> {
+    fn req_body10mb_no_size() -> Result<(), Error> {
         |bld: http::request::Builder| {
             let data = DataGenerator::new(10 * 1024 * 1024);
             let req = bld
@@ -93,7 +66,7 @@ test_h1_h2! {
         }
     }
 
-    fn body10mb_with_size() -> Result<(), Error> {
+    fn req_body10mb_with_size() -> Result<(), Error> {
         |bld: http::request::Builder| {
             const AMOUNT: usize = 10 * 1024 * 1024;
             let data = DataGenerator::new(AMOUNT);

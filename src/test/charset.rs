@@ -12,7 +12,6 @@ test_h1_h2! {
             let req = bld
                 .uri("/charset_iso8859")
                 .body(().into())?;
-
             let file = File::open("./data/iso8859.txt").block().unwrap();
             let buf_reader = BufReader::new(file);
             let resp = tide::Response::with_reader(200, buf_reader)

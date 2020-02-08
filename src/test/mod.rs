@@ -1,14 +1,18 @@
 use crate::prelude::*;
+use crate::AsyncRead;
 use crate::AsyncRuntime;
 use crate::Body;
 use crate::Error;
 use async_std_lib::sync::channel;
 use futures_util::future::FutureExt;
 use futures_util::select;
+use rand::Rng;
 use std::future::Future;
 use std::io;
 use std::net;
+use std::pin::Pin;
 use std::sync::Mutex;
+use std::task::{Context, Poll};
 use tide;
 
 mod basic;
@@ -206,4 +210,40 @@ macro_rules! test_h1_h2 {
         test_h1_h2!($($rest)*);
     };
     () => ()
+}
+
+#[derive(Debug)]
+pub struct DataGenerator {
+    total: usize,
+    produced: usize,
+}
+
+impl DataGenerator {
+    fn new(total: usize) -> Self {
+        DataGenerator { total, produced: 0 }
+    }
+}
+
+use std::io::Read;
+
+impl io::Read for DataGenerator {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut rng = rand::thread_rng();
+        let max = buf.len().min(self.total - self.produced);
+        rng.fill(&mut buf[0..max]);
+        self.produced += max;
+        Ok(max)
+    }
+}
+
+impl AsyncRead for DataGenerator {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.get_mut();
+        let amount = this.read(buf)?;
+        Ok(amount).into()
+    }
 }

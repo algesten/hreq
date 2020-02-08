@@ -58,9 +58,10 @@ webpki = { version = "*", optional = true }
 webpki-roots = { version = "*", optional = true }
 
 [dev-dependencies]
-tide = "0.6.0"
+tide = "0.6"
 async-std-lib = { package = "async-std", version = "*", features = ["unstable"] }
-paste = "0.1.6"
+paste = "0.1"
+rand = "0.7"
 
 [package.metadata.docs.rs]
 all-features = true
