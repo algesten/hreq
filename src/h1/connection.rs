@@ -46,16 +46,21 @@ where
 
         inner.conn_waker = Some(cx.waker().clone());
 
+        let mut last_task_waker = None;
+        let mut delayed_error_waiting = false;
+
         loop {
             let cur_seq = Seq(inner.cur_seq);
             let mut state = inner.state; // copy to appease borrow checker
 
             if state == State::Closed {
                 if let Some(e) = inner.error.as_mut() {
+                    trace!("Connection closed with error");
                     let repl = io::Error::new(e.kind(), Error::Message(e.to_string()));
                     let orig = mem::replace(e, repl);
                     return Err(orig).into();
                 } else {
+                    trace!("Connection closed");
                     return Ok(()).into();
                 }
             }
@@ -64,7 +69,7 @@ where
             inner.tasks.prune_completed();
 
             if let Some(task) = inner.tasks.task_for_state(cur_seq, state) {
-                let task_waker = task.task_waker();
+                last_task_waker = task.task_waker();
                 match ready!(task.poll_connection(cx, &mut this.io, &mut state)) {
                     Ok(_) => {
                         if inner.state != State::Ready && state == State::Ready {
@@ -77,17 +82,34 @@ where
                         }
                     }
                     Err(err) => {
-                        trace!("Connection error: {:?}", err);
-                        task.info_mut().complete = true;
+                        trace!("Connection error: {:?}", err);                        
                         inner.error = Some(err);
-                        inner.state = State::Closed;
-                        if let Some(task_waker) = task_waker {
-                            task_waker.wake();
+                        // If we're State::Waiting for a response, the other side might
+                        // just abruptly close the connection after sending the response
+                        // header. In these cases we must delay switching to State::Closed
+                        // until we fully parsed the header.
+                        if inner.state == State::Waiting {
+                            delayed_error_waiting = true;
+                            continue;
                         }
-                        continue;
+                        inner.state = State::Closed;
+                        if let Some(waker) = last_task_waker.take() {
+                            waker.wake();
+                        }      
+                        continue;  
                     }
                 };
             } else {
+                // We got an error while waiting for a response body, but then proceeded to
+                // parse the body fully.
+                if delayed_error_waiting && inner.state == State::RecvBody {
+                    inner.state = State::Closed;
+                    trace!("State transitioned to: {:?}", inner.state);
+                    if let Some(waker) = last_task_waker.take() {
+                        waker.wake();
+                    }
+                    continue;
+                }
                 break Poll::Pending;
             }
         }

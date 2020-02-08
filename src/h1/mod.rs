@@ -75,10 +75,9 @@ impl Future for ResponseFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut inner = self.inner.lock().unwrap();
 
-        if let Some(err) = inner.get_remote_error() {
-            return Err(err).into();
-        }
-
+        // Despite any error, we might have a complete response. This happens
+        // when a server sends a full response header and then closes the
+        // connection straight after.
         if let Some(task) = inner.tasks.get_recv_res(self.seq) {
             let res = task.try_parse()?;
             if let Some(res) = res {
@@ -91,6 +90,8 @@ impl Future for ResponseFuture {
                 task.task_waker = cx.waker().clone();
                 Poll::Pending
             }
+        } else if let Some(err) = inner.get_remote_error() {
+            Err(err).into()
         } else {
             let task = RecvRes::new(self.seq, cx.waker().clone());
             inner.enqueue(task);
