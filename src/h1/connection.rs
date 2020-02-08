@@ -64,6 +64,7 @@ where
             inner.tasks.prune_completed();
 
             if let Some(task) = inner.tasks.task_for_state(cur_seq, state) {
+                let task_waker = task.task_waker();
                 match ready!(task.poll_connection(cx, &mut this.io, &mut state)) {
                     Ok(_) => {
                         if inner.state != State::Ready && state == State::Ready {
@@ -80,6 +81,10 @@ where
                         task.info_mut().complete = true;
                         inner.error = Some(err);
                         inner.state = State::Closed;
+                        if let Some(task_waker) = task_waker {
+                            task_waker.wake();
+                        }
+                        continue;
                     }
                 };
             } else {
@@ -150,7 +155,7 @@ impl ConnectionPoll for SendBody {
         }
         // entire current send_body was sent, waker is for a
         // someone potentially waiting to send more.
-        if let Some(waker) = self.send_waker.take() {
+        if let Some(waker) = self.task_waker.take() {
             waker.wake();
         }
 
@@ -208,7 +213,7 @@ impl ConnectionPoll for RecvRes {
         *state = State::RecvBody;
 
         // in theory we're now have a complete header ending \r\n\r\n
-        self.waker.clone().wake();
+        self.task_waker.clone().wake();
 
         Ok(()).into()
     }
@@ -227,7 +232,7 @@ impl ConnectionPoll for RecvBody {
         let cur_len = self.buf.len();
         self.buf.resize(self.read_max, 0);
         if cur_len == self.read_max {
-            self.waker.clone().wake();
+            self.task_waker.clone().wake();
             return Poll::Pending;
         }
         let read = Pin::new(&mut *io).poll_read(cx, &mut self.buf[cur_len..]);
@@ -253,7 +258,7 @@ impl ConnectionPoll for RecvBody {
             }
         }
 
-        self.waker.clone().wake();
+        self.task_waker.clone().wake();
         Ok(()).into()
     }
 }

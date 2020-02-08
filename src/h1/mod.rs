@@ -88,7 +88,7 @@ impl Future for ResponseFuture {
                 task.info.complete = true;
                 Ok(http::Response::from_parts(parts, recv_stream)).into()
             } else {
-                task.waker = cx.waker().clone();
+                task.task_waker = cx.waker().clone();
                 Poll::Pending
             }
         } else {
@@ -123,7 +123,7 @@ impl SendStream {
             return Err(err).into();
         }
         if let Some(task) = inner.tasks.get_send_body(self.seq) {
-            task.send_waker.replace(cx.waker().clone());
+            task.task_waker.replace(cx.waker().clone());
             Poll::Pending
         } else {
             Ok(()).into()
@@ -213,7 +213,7 @@ impl RecvReader {
     pub fn poll_read(&self, cx: &mut Context, out: &mut [u8]) -> Poll<io::Result<usize>> {
         let mut inner = self.inner.lock().unwrap();
         if let Some(task) = inner.tasks.get_recv_body(self.seq) {
-            task.waker = cx.waker().clone();
+            task.task_waker = cx.waker().clone();
             let buf = &mut task.buf;
             if buf.is_empty() {
                 if task.end {

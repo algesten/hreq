@@ -57,6 +57,15 @@ impl Task {
         }
     }
 
+    pub fn task_waker(&self) -> Option<Waker> {
+        match self {
+            Task::SendReq(_) => None,
+            Task::SendBody(t) => t.task_waker.clone(),
+            Task::RecvRes(t) => Some(t.task_waker.clone()),
+            Task::RecvBody(t) => Some(t.task_waker.clone()),
+        }
+    }
+
     pub fn is_send_req(&self) -> bool {
         if let Task::SendReq(_) = self {
             return true;
@@ -111,7 +120,7 @@ pub struct SendBody {
     pub info: TaskInfo,
     pub body: Vec<u8>,
     pub end: bool,
-    pub send_waker: Option<Waker>,
+    pub task_waker: Option<Waker>,
 }
 
 impl SendBody {
@@ -120,7 +129,7 @@ impl SendBody {
             info: TaskInfo::new(seq),
             body,
             end,
-            send_waker: None,
+            task_waker: None,
         }
     }
 }
@@ -129,15 +138,15 @@ impl SendBody {
 pub struct RecvRes {
     pub info: TaskInfo,
     pub buf: Vec<u8>,
-    pub waker: Waker,
+    pub task_waker: Waker,
 }
 
 impl RecvRes {
-    pub fn new(seq: Seq, waker: Waker) -> Self {
+    pub fn new(seq: Seq, task_waker: Waker) -> Self {
         RecvRes {
             info: TaskInfo::new(seq),
             buf: Vec::with_capacity(HEADER_BUF_SIZE),
-            waker,
+            task_waker,
         }
     }
 
@@ -165,18 +174,18 @@ pub struct RecvBody {
     pub read_max: usize,
     pub end: bool,
     pub reuse_conn: bool,
-    pub waker: Waker,
+    pub task_waker: Waker,
 }
 
 impl RecvBody {
-    pub fn new(seq: Seq, reuse_conn: bool, waker: Waker) -> Self {
+    pub fn new(seq: Seq, reuse_conn: bool, task_waker: Waker) -> Self {
         RecvBody {
             info: TaskInfo::new(seq),
             buf: Vec::with_capacity(RECV_BODY_SIZE),
             read_max: 0,
             end: false,
             reuse_conn,
-            waker,
+            task_waker,
         }
     }
 }
