@@ -2,6 +2,7 @@ use crate::charset::CharCodec;
 use crate::deadline::Deadline;
 use crate::h1::RecvStream as H1RecvStream;
 use crate::res_ext::HeaderMapExt;
+use crate::tokio;
 use crate::AsyncRead;
 use crate::Error;
 use bytes::Bytes;
@@ -17,6 +18,8 @@ use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+
+use tokio_lib::fs::File;
 
 #[cfg(feature = "gzip")]
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
@@ -368,7 +371,8 @@ impl From<Vec<u8>> for Body {
 impl From<fs::File> for Body {
     fn from(file: fs::File) -> Self {
         let len = file.metadata().ok().map(|m| m.len());
-        Body::from_sync_read(file, len)
+        let async_file = File::from_std(file);
+        Body::from_async_read(tokio::from_tokio(async_file), len)
     }
 }
 

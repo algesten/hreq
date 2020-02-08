@@ -46,7 +46,7 @@ tokio-traits = { path = "./tokio-traits" }
 async-std-lib = { package = "async-std", version = "*", optional = true }
 
 ## tokio
-tokio-lib = { package = "tokio", version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time"], optional = true }
+tokio-lib = { package = "tokio", version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time", "fs"], optional = true }
 
 ## gzip
 async-compression = { version = "*", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
