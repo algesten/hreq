@@ -48,7 +48,7 @@ impl SendRequest {
             let seq = Seq(inner.next_seq);
             inner.next_seq += 1;
             let task = SendReq::from_request(seq, &req, end)?;
-            inner.enqueue(task);
+            inner.enqueue(task)?;
             seq
         };
         let fut_response = ResponseFuture::new(self.inner.clone(), seq);
@@ -94,7 +94,7 @@ impl Future for ResponseFuture {
             Err(err).into()
         } else {
             let task = RecvRes::new(self.seq, cx.waker().clone());
-            inner.enqueue(task);
+            inner.enqueue(task)?;
             Poll::Pending
         }
     }
@@ -147,7 +147,7 @@ impl SendStream {
             self.limiter.finish(&mut out)?;
         }
         let task = SendBody::new(self.seq, out, end);
-        inner.enqueue(task);
+        inner.enqueue(task)?;
         Ok(())
     }
 }
@@ -241,7 +241,7 @@ impl RecvReader {
         } else {
             let mut task = RecvBody::new(self.seq, self.reuse_conn, cx.waker().clone());
             task.read_max = out.len();
-            inner.enqueue(task);
+            inner.enqueue(task)?;
             Poll::Pending
         }
     }
@@ -287,9 +287,16 @@ impl Inner {
         }
     }
 
-    fn enqueue<T: Into<Task>>(&mut self, task: T) {
+    fn enqueue<T: Into<Task>>(&mut self, task: T) -> io::Result<()> {
+        if self.state == State::Closed {
+            return Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Connection is closed",
+            ));
+        }
         self.tasks.push(task.into());
         self.try_wake_conn();
+        Ok(())
     }
 
     fn try_wake_conn(&mut self) {

@@ -82,7 +82,7 @@ where
                         }
                     }
                     Err(err) => {
-                        trace!("Connection error: {:?}", err);                        
+                        trace!("Connection error: {:?}", err);
                         inner.error = Some(err);
                         // If we're State::Waiting for a response, the other side might
                         // just abruptly close the connection after sending the response
@@ -95,8 +95,8 @@ where
                         inner.state = State::Closed;
                         if let Some(waker) = last_task_waker.take() {
                             waker.wake();
-                        }      
-                        continue;  
+                        }
+                        continue;
                     }
                 };
             } else {
@@ -253,16 +253,24 @@ impl ConnectionPoll for RecvBody {
     {
         let cur_len = self.buf.len();
         self.buf.resize(self.read_max, 0);
-        if cur_len == self.read_max {
+        if cur_len == self.read_max && self.read_max > 0 {
             self.task_waker.clone().wake();
             return Poll::Pending;
         }
-        let read = Pin::new(&mut *io).poll_read(cx, &mut self.buf[cur_len..]);
-        if let Poll::Pending = read {
-            self.buf.resize(cur_len, 0);
-        }
-        let amount = ready!(read)?;
-        self.buf.resize(cur_len + amount, 0);
+
+        let amount = if self.read_max == 0 {
+            // ContentLengthRead does a read for "content-length: 0", to
+            // ensure the connection is in correct state for the next req.
+            0
+        } else {
+            let read = Pin::new(&mut *io).poll_read(cx, &mut self.buf[cur_len..]);
+            if let Poll::Pending = read {
+                self.buf.resize(cur_len, 0);
+            }
+            let amount = ready!(read)?;
+            self.buf.resize(cur_len + amount, 0);
+            amount
+        };
 
         trace!(
             "RecvBody read_max: {} amount: {} buf size: {}",

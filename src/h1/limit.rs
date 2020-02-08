@@ -71,11 +71,16 @@ impl LimitRead {
 pub struct ContentLengthRead {
     limit: u64,
     total: u64,
+    reached_end: bool,
 }
 
 impl ContentLengthRead {
     fn new(limit: u64) -> Self {
-        ContentLengthRead { limit, total: 0 }
+        ContentLengthRead {
+            limit,
+            total: 0,
+            reached_end: false,
+        }
     }
     fn poll_read(
         &mut self,
@@ -85,10 +90,20 @@ impl ContentLengthRead {
     ) -> Poll<io::Result<usize>> {
         let left = (self.limit - self.total).min(usize::max_value() as u64) as usize;
         if left == 0 {
+            // we need to put the underlying connection in the right
+            // state to receive another request.
+            if !self.reached_end {
+                let mut end = [];
+                ready!(recv.poll_read(cx, &mut end[..]))?;
+                self.reached_end = true;
+            }
             return Ok(0).into();
         }
         let max = buf.len().min(left);
         let amount = ready!(recv.poll_read(cx, &mut buf[0..max]))?;
+        if amount == 0 {
+            self.reached_end = true;
+        }
         self.total += amount as u64;
         Ok(amount).into()
     }

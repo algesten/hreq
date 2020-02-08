@@ -174,6 +174,8 @@ impl Agent {
         req: http::Request<Body>,
         params: RequestParams,
     ) -> Result<http::Response<Body>, Error> {
+        trace!("Agent {} {}", req.method(), req.uri());
+
         let mut retries = self.retries;
         let mut redirects = self.redirects;
         let pooling = self.pooling;
@@ -205,7 +207,7 @@ impl Agent {
             };
 
             match conn.send_request(req).await {
-                Ok(res) => {
+                Ok(mut res) => {
                     // follow redirections
                     let code = res.status_code();
                     if res.status().is_redirection() {
@@ -228,6 +230,14 @@ impl Agent {
                             // TODO fix 307 and 308 using Expect-100 mechanic.
                             warn!("Unhandled redirection status: {} {}", code, location);
                             break Ok(res);
+                        }
+
+                        // exhaust the previous body before following the redirect.
+                        // this is to ensure http1.1 connections are in a good state.
+                        if res.body_mut().read_to_end().await.is_err() {
+                            // some servers just close the connection after a redirect.
+                            let conn_id = conn.id();
+                            self.connections.retain(|c| c.id() != conn_id);
                         }
 
                         continue;
