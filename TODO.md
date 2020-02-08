@@ -61,7 +61,7 @@ What are we doing?
   - [x] Charset decode
   - [ ] gzip encoding
   - [ ] gzip decode
-  - [ ] Download large body
+  - [x] Download large body
   - [ ] Follow redirects
   - [ ] Retries
   - [ ] 1_000_000 URLs?

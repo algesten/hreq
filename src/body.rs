@@ -298,6 +298,13 @@ impl AsyncRead for BodyReader {
                             io::Error::new(io::ErrorKind::Other, "Other h2 error")
                         })
                     })?;
+                    recv.flow_control()
+                        .release_capacity(data.len())
+                        .map_err(|e| {
+                            e.into_io().unwrap_or_else(|| {
+                                io::Error::new(io::ErrorKind::Other, "Other h2 error")
+                            })
+                        })?;
                     this.bytes_to_buf(data, buf)
                 } else {
                     0

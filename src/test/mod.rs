@@ -17,6 +17,7 @@ use tide;
 
 mod basic;
 mod charset;
+mod get;
 mod post;
 mod simplelog;
 mod timeout;
@@ -77,10 +78,11 @@ where
         {
             let hostport = hostport.clone();
             AsyncRuntime::current().spawn(async move {
-                select! {
+                let req = select! {
                     a = app.listen(&hostport).fuse() => a.map_err(|e| Error::Io(e)),
                     b = rxend.recv().fuse() => Ok(()),
-                }
+                };
+                req.expect("Error in app.listen()");
             });
         }
 
@@ -107,19 +109,19 @@ where
         // Send request and wait for the client response.
         let client_res = req.send().await?;
 
+        // Wait for the server request to "leak out" of the server app.
+        let tide_server_req = rxsreq.recv().await.expect("Wait for server request");
+
         // Normalize client response
         let (parts, mut body) = client_res.into_parts();
         // Read out entire response bytes to a vec.
         let client_bytes = body.read_to_vec().await?;
         let client_res = http::Response::from_parts(parts, ());
 
-        // Wait for the server request to "leak out" of the server app.
-        let tide_server_req = rxsreq.recv().await.expect("Wait for server request");
-
-        let server_req = normalize_tide_request(tide_server_req);
-
         // Shut down the server.
         txend.send(()).await;
+
+        let server_req = normalize_tide_request(tide_server_req);
 
         Ok((server_req, client_res, client_bytes))
     })
