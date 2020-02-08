@@ -24,6 +24,8 @@ mod redir;
 mod simplelog;
 mod timeout;
 
+// mod top;
+
 pub fn test_setup() {
     simplelog::set_logger();
     // We're using async-std for the tests because that's what tide uses.
