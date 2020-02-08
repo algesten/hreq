@@ -63,6 +63,20 @@ where
     /// [`Error::is_timeout()`]: enum.Error.html#method.is_timeout
     fn timeout(self, duration: Duration) -> Self;
 
+    /// This is an alias for `.timeout()` without having to construct a `Duration`.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// let req = Request::get("https://www.google.com/")
+    ///     .timeout_millis(10_000)
+    ///     .send(()).block();
+    ///
+    /// assert!(req.is_err());
+    /// assert!(req.unwrap_err().is_timeout());
+    /// ```
+    fn timeout_millis(self, millis: u64) -> Self;
+
     /// Force the request to use http2.
     ///
     /// Normally whether to use http2 is negotiated as part of TLS (https). The TLS feature is
@@ -167,6 +181,10 @@ impl RequestBuilderExt for request::Builder {
         with_builder_store(self, |store| {
             store.req_params.timeout = Some(duration);
         })
+    }
+
+    fn timeout_millis(self, millis: u64) -> Self {
+        self.timeout(Duration::from_millis(millis))
     }
 
     fn force_http2(self, enabled: bool) -> Self {
