@@ -9,6 +9,85 @@ use futures_util::future::poll_fn;
 use std::pin::Pin;
 
 test_h1_h2! {
+    fn sane_headers_with_size() -> Result<(), Error> {
+        |bld: http::request::Builder| {
+            let req = bld
+                .method("POST")
+                .uri("/path")
+                .body("requesting".into())?;
+            let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
+                async move {
+                    tide_req
+                }
+            })?;
+            assert_eq!(server_req.header("transfer-encoding"), None);
+            assert_eq!(server_req.header("content-length"), Some("10"));
+            assert_eq!(server_req.header("content-encoding"), None);
+            Ok(())
+        }
+    }
+
+    fn sane_headers_with_size0() -> Result<(), Error> {
+        |bld: http::request::Builder| {
+            let req = bld
+                .method("POST")
+                .uri("/path")
+                .body("".into())?;
+            let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
+                async move {
+                    tide_req
+                }
+            })?;
+            assert_eq!(server_req.header("transfer-encoding"), None);
+            assert_eq!(server_req.header("content-length"), Some("0"));
+            assert_eq!(server_req.header("content-encoding"), None);
+            Ok(())
+        }
+    }
+
+    fn sane_headers_no_size() -> Result<(), Error> {
+        |bld: http::request::Builder| {
+            const AMOUNT: usize = 1024;
+            let data = DataGenerator::new(AMOUNT);
+            let req = bld
+                .method("POST")
+                .uri("/body1kb")
+                .body(Body::from_sync_read(data, None))?;
+            let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
+                async move {
+                    tide_req
+                }
+            })?;
+            if server_req.version() != http::Version::HTTP_2 {
+                assert_eq!(server_req.header("transfer-encoding"), Some("chunked"));
+            }
+            assert_eq!(server_req.header("content-length"), None);
+            assert_eq!(server_req.header("content-encoding"), None);
+            Ok(())
+        }
+    }
+
+    fn sane_headers_with_content_enc() -> Result<(), Error> {
+        |bld: http::request::Builder| {
+            let req = bld
+                .method("POST")
+                .uri("/path")
+                .header("content-encoding", "gzip")
+                .body("requesting".into())?;
+            let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
+                async move {
+                    tide_req
+                }
+            })?;
+            if server_req.version() != http::Version::HTTP_2 {
+                assert_eq!(server_req.header("transfer-encoding"), Some("chunked"));
+            }
+            assert_eq!(server_req.header("content-length"), None);
+            assert_eq!(server_req.header("content-encoding"), Some("gzip"));
+            Ok(())
+        }
+    }
+
     fn req_body1kb_with_size() -> Result<(), Error> {
         |bld: http::request::Builder| {
             const AMOUNT: usize = 1024;
