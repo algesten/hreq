@@ -12,13 +12,18 @@ test_h1_h2! {
                 .uri("/path")
                 .body(().into())?;
             let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
-                async move {
-                    tide_req
-                }
+                async move { tide_req }
             })?;
             assert_eq!(server_req.header("transfer-encoding"), None);
             assert_eq!(server_req.header("content-length"), None);
             assert_eq!(server_req.header("content-encoding"), None);
+            assert_eq!(server_req.header("user-agent").map(|s| s.to_string()), Some(format!("rust/hreq/{}", crate::VERSION)));
+            assert_eq!(server_req.header("accept"), Some("*/*"));
+            if server_req.version() == http::Version::HTTP_2 {
+                // :authority and :scheme seems to never make it through.
+            } else {
+                assert_eq!(server_req.header("host"), Some("127.0.0.1"));
+            }
             Ok(())
         }
     }

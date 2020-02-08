@@ -67,6 +67,8 @@ mod tls;
 #[cfg(all(test, feature = "async-std"))]
 mod test;
 
+pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
 pub use crate::agent::Agent;

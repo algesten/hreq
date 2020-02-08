@@ -108,6 +108,16 @@ impl Connection {
             }
         }
 
+        if parts.headers.get("user-agent").is_none() {
+            // TODO this could be created once for the entire lifetime of the library
+            let agent = format!("rust/hreq/{}", crate::VERSION);
+            parts.headers.set("user-agent", agent);
+        }
+
+        if parts.headers.get("accept").is_none() {
+            parts.headers.set("accept", "*/*");
+        }
+
         let req = http::Request::from_parts(parts, body);
 
         trace!("{} {} {} {}", self.p, self.addr, req.method(), req.uri());
