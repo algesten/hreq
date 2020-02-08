@@ -62,7 +62,7 @@ What are we doing?
   - [x] gzip encoding
   - [x] gzip decode
   - [x] Download large body
-  - [ ] Follow redirects
+  - [x] Follow redirects
   - [ ] Retries
   - [ ] 1_000_000 URLs?
 - [ ] Doc

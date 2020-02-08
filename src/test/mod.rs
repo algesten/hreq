@@ -20,6 +20,7 @@ mod charset;
 mod get;
 mod gzip;
 mod post;
+mod redir;
 mod simplelog;
 mod timeout;
 
