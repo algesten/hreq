@@ -59,8 +59,8 @@ What are we doing?
   - [x] POST with large body
   - [x] POST without content length (chunked http11)
   - [x] Charset decode
-  - [ ] gzip encoding
-  - [ ] gzip decode
+  - [x] gzip encoding
+  - [x] gzip decode
   - [x] Download large body
   - [ ] Follow redirects
   - [ ] Retries

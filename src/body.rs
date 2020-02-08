@@ -28,7 +28,6 @@ pub struct Body {
     length: Option<u64>, // incoming length if given with reader
     has_read: bool,
     char_codec: Option<CharCodec>,
-    content_length: Option<usize>, // content-length header in configure()
     deadline: Deadline,
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
@@ -77,21 +76,26 @@ impl Body {
             length,
             has_read: false,
             char_codec: None,
-            content_length: None,
             deadline: Deadline::inert(),
             deadline_fut: None,
             unfinished_recs: unfin,
         }
     }
 
-    pub(crate) fn length(&self) -> Option<u64> {
-        self.length
-    }
-
     pub(crate) fn is_definitely_no_body(&self) -> bool {
         self.length.map(|l| l == 0).unwrap_or(false)
     }
 
+    pub(crate) fn content_encoded_length(&self) -> Option<u64> {
+        if self.codec.get_ref().affects_content_size() {
+            // things like gzip will affect self.length
+            None
+        } else {
+            self.length
+        }
+    }
+
+    /// When calling this "content-encoding" and "content-type" must be settled.
     pub(crate) fn configure(
         &mut self,
         deadline: Deadline,
@@ -125,8 +129,6 @@ impl Body {
                 self.char_codec = Some(CharCodec::new(charset, is_response));
             }
         }
-
-        self.content_length = headers.get_as("content-length");
     }
 
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
@@ -145,10 +147,7 @@ impl Body {
     }
 
     pub async fn read_to_vec(&mut self) -> Result<Vec<u8>, Error> {
-        // use content length as capacity if we know it. given the content can be both
-        // gzipped and encoded with some charset, it might be wrong.
-        // TODO multiply this guess with good values for gzip (and charset?)
-        let mut vec = Vec::with_capacity(self.content_length.unwrap_or(8192));
+        let mut vec = Vec::with_capacity(8192);
         let mut idx = 0;
         loop {
             if idx == vec.len() {
@@ -215,6 +214,17 @@ impl BodyCodec {
             BodyCodec::GzipDecoder(r) => Some(r.get_ref().get_ref()),
             #[cfg(feature = "gzip")]
             BodyCodec::GzipEncoder(r) => Some(r.get_ref().get_ref()),
+        }
+    }
+
+    fn affects_content_size(&self) -> bool {
+        match self {
+            BodyCodec::Deferred(_) => false,
+            BodyCodec::Pass(_) => false,
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipDecoder(_) => true,
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipEncoder(_) => true,
         }
     }
 }
@@ -475,7 +485,7 @@ impl fmt::Debug for Body {
             write!(f, ", char_codec: {:?}", char_codec)?;
         }
         write!(f, ", len: ")?;
-        match &self.content_length {
+        match self.content_encoded_length() {
             Some(v) => write!(f, "{}", v),
             None => write!(f, "unknown"),
         }?;

@@ -18,6 +18,7 @@ use tide;
 mod basic;
 mod charset;
 mod get;
+mod gzip;
 mod post;
 mod simplelog;
 mod timeout;
