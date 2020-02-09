@@ -13,6 +13,7 @@ use futures_util::ready;
 use limit::{LimitRead, LimitWrite};
 use std::future::Future;
 use std::io;
+use std::mem;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
@@ -307,7 +308,13 @@ impl Inner {
 
     fn get_remote_error(&mut self) -> Option<Error> {
         if let State::Closed = &mut self.state {
-            return Some(Error::Proto(self.error.as_ref().unwrap().to_string()));
+            if let Some(e) = &mut self.error {
+                // first ever to do this, gets the original io error
+                // after that it will be fake copies.
+                let fake = io::Error::new(e.kind(), e.to_string());
+                let orig = mem::replace(e, fake);
+                return Some(Error::Io(orig));
+            }
         }
         None
     }

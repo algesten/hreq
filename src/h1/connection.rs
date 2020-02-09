@@ -1,12 +1,10 @@
 use super::task::{RecvBody, RecvRes, SendBody, SendReq, Seq, Task};
-use super::Error;
 use super::Inner;
 use super::State;
 use super::{AsyncRead, AsyncWrite};
 use futures_util::ready;
 use std::future::Future;
 use std::io;
-use std::mem;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
@@ -54,11 +52,11 @@ where
             let mut state = inner.state; // copy to appease borrow checker
 
             if state == State::Closed {
-                if let Some(e) = inner.error.as_mut() {
+                if let Some(e) = inner.error.as_ref() {
                     trace!("Connection closed with error");
-                    let repl = io::Error::new(e.kind(), Error::Proto(e.to_string()));
-                    let orig = mem::replace(e, repl);
-                    return Err(orig).into();
+                    // connection gets a fake copy while the client gets the original
+                    let fake = io::Error::new(e.kind(), e.to_string());
+                    return Err(fake).into();
                 } else {
                     trace!("Connection closed");
                     return Ok(()).into();

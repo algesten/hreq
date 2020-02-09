@@ -44,6 +44,19 @@ impl Error {
         }
         false
     }
+
+    pub(crate) fn is_retryable(&self) -> bool {
+        match self {
+            Error::Io(e) => match e.kind() {
+                io::ErrorKind::BrokenPipe
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::Interrupted => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Error {

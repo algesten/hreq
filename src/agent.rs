@@ -1,5 +1,6 @@
 //! Connection pooling, redirects, cookies etc.
 
+use crate::async_impl::AsyncRuntime;
 use crate::connect;
 use crate::reqb_ext::resolve_hreq_ext;
 use crate::reqb_ext::RequestParams;
@@ -8,6 +9,7 @@ use crate::Body;
 use crate::Connection;
 use crate::Error;
 use crate::ResponseExt;
+use std::time::Duration;
 
 /// Agents provide redirects, connection pooling, cookies and retries.
 ///
@@ -177,6 +179,7 @@ impl Agent {
         trace!("Agent {} {}", req.method(), req.uri());
 
         let mut retries = self.retries;
+        let mut backoff_millis: u64 = 125;
         let mut redirects = self.redirects;
         let pooling = self.pooling;
         let mut unpooled: Option<Connection> = None;
@@ -215,6 +218,7 @@ impl Agent {
 
                         // no more redirections. return what we have.
                         if redirects < 0 {
+                            trace!("Not following more redirections");
                             break Ok(res);
                         }
 
@@ -222,6 +226,9 @@ impl Agent {
                         let location = res.header("location").ok_or_else(|| {
                             Error::Proto("Redirect without Location header".into())
                         })?;
+
+                        trace!("Redirect to: {}", location);
+
                         let (mut parts, body) = next_req.into_parts();
                         parts.uri = parts.uri.parse_relative(location)?;
                         next_req = http::Request::from_parts(parts, body);
@@ -251,11 +258,20 @@ impl Agent {
 
                     // retry?
                     retries -= 1;
-                    if retries == 0 || !is_idempotent {
+                    if retries == 0 || !is_idempotent || !err.is_retryable() {
+                        trace!("Abort with error, {}", err);
                         break Err(err);
                     }
+
+                    trace!("Retrying on error, {}", err);
                 }
             }
+            // retry backoff
+            trace!("Retry backoff: {}ms", backoff_millis);
+            AsyncRuntime::current()
+                .timeout(Duration::from_millis(backoff_millis))
+                .await;
+            backoff_millis = (backoff_millis * 2).min(10_000);
         }
     }
 }

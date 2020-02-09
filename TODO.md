@@ -36,8 +36,8 @@ What are we doing?
   - [x] character sets
   - [x] gzip
 - [x] Retry logic
-  - [ ] Categorize errors as retryable or not
-  - [ ] Back-off?
+  - [x] Categorize errors as retryable or not
+  - [x] Back-off
 - [x] Connection pooling
   - [ ] Connection pool timeout
   - [ ] Max connections in pool
