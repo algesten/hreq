@@ -87,7 +87,7 @@ impl Connection {
         let deadline = params.deadline();
 
         // resolve deferred body codecs because content-encoding and content-type are settled.
-        body.configure(deadline, &parts.headers, false);
+        body.configure(params, &parts.headers, false);
 
         if let Some(len) = body.content_encoded_length() {
             // the body indicates a length (for sure).

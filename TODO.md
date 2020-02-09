@@ -33,7 +33,7 @@ What are we doing?
   - [x] character sets
   - [x] gzip
 - Content encoding
-  - [ ] character sets
+  - [x] character sets
   - [x] gzip
 - [x] Retry logic
   - [ ] Categorize errors as retryable or not
@@ -63,8 +63,8 @@ What are we doing?
   - [x] gzip decode
   - [x] Download large body
   - [x] Follow redirects
-  - [ ] Retries
-  - [ ] 1_000_000 URLs?
+  - [x] Retries
+  - [x] 1_000_000 URLs?
 - [ ] Doc
 - [ ] Metadata gathering through request
 - [ ] Make character sets optional (utf-8 only)

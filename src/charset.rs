@@ -3,71 +3,115 @@ use encoding_rs::{Decoder, Encoder, Encoding};
 use futures_util::ready;
 use std::fmt;
 use std::io;
+use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub struct CharCodec(Codec);
-
-enum Codec {
-    Encoder(Encoder),
-    Decoder(Decoder),
+/// Charset transcoder
+pub struct CharCodec {
+    dec: Decoder,
+    enc: Option<Encoder>,
+    decoded: String,
+    is_end: bool,
 }
 
 impl CharCodec {
-    pub fn new(charset: &str, decode: bool) -> CharCodec {
-        let enc = Encoding::for_label(charset.as_bytes()).unwrap_or_else(|| {
-            warn!("Unrecognized character encoding: {}", charset);
-            Encoding::for_label(b"utf-8").unwrap()
-        });
-        let codec = if decode {
-            trace!("CharCodec decoder: {} -> {}", charset, enc.name());
-            Codec::Decoder(enc.new_decoder())
-        } else {
-            trace!("CharCodec encoder: {} -> {}", charset, enc.name());
-            Codec::Encoder(enc.new_encoder())
-        };
-        CharCodec(codec)
+    pub fn new(from: &'static Encoding, to: &'static Encoding) -> CharCodec {
+        CharCodec {
+            dec: from.new_decoder(),
+            enc: if to == encoding_rs::UTF_8 {
+                None
+            } else {
+                Some(to.new_encoder())
+            },
+            decoded: String::new(),
+            is_end: false,
+        }
     }
 
-    pub fn poll_decode<R: AsyncBufRead + Unpin>(
+    pub fn remove_encoder(&mut self) {
+        self.enc = None;
+    }
+
+    pub fn poll_codec<R: AsyncBufRead + Unpin>(
         &mut self,
         cx: &mut Context,
         from: &mut R,
         dst: &mut [u8],
     ) -> Poll<Result<usize, io::Error>> {
+        // get some incoming bytes from source
         let src = ready!(Pin::new(&mut *from).poll_fill_buf(cx))?;
 
-        let (read, written) = match &mut self.0 {
-            Codec::Encoder(_) => {
-                // TODO...
-                panic!("Missing Codec::Encoder impl");
+        // true once when we reach EOF first time
+        let mut became_end = false;
+
+        if !self.is_end && src.is_empty() {
+            became_end = true;
+            self.is_end = true;
+        }
+
+        // decode when there's not many chars left in the decoded
+        if (!self.is_end && self.decoded.len() < 128) || became_end {
+            let mut decode_to = [0_u8; 8_192];
+
+            let (_, decode_read, decode_written, decode_had_errors) =
+                self.dec.decode_to_utf8(src, &mut decode_to[..], became_end);
+
+            if decode_had_errors {
+                debug!("Character decoder had errors");
             }
-            Codec::Decoder(dec) => {
-                let (_, read, written, had_errors) = dec.decode_to_utf8(src, dst, src.is_empty());
-                if had_errors {
-                    debug!("Character decoder had errors");
-                }
-                (read, written)
+
+            Pin::new(&mut *from).consume(decode_read);
+
+            // this unsafe is ok because we trust encoding_rs produces legit utf8.
+            let decoded = unsafe { std::str::from_utf8_unchecked(&decode_to[0..decode_written]) };
+            self.decoded.push_str(decoded);
+        }
+
+        if let Some(enc) = &mut self.enc {
+            // transcode to the output encoding
+            let (_, encode_read, encode_written, encode_had_errors) =
+                enc.encode_from_utf8(&self.decoded[..], dst, self.is_end);
+            if encode_had_errors {
+                debug!("Character encoder had errors");
             }
-        };
+            let rest = self.decoded.split_off(encode_read);
+            self.decoded = rest;
+            Ok(encode_written).into()
+        } else {
+            // the output is utf8, and that's what we already have,
+            // don't do any additional encoding.
+            let decoded_bytes = self.decoded.as_bytes();
+            let mut max = decoded_bytes.len().min(dst.len());
 
-        Pin::new(&mut *from).consume(read);
+            // reduce the amount to copy until we're on a char boundary
+            while max > 0 && !self.decoded.is_char_boundary(max) {
+                max -= 1;
+            }
 
-        Ok(written).into()
-    }
-}
+            (&mut dst[0..max]).copy_from_slice(&decoded_bytes[0..max]);
 
-impl fmt::Debug for Codec {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Codec::Encoder(v) => write!(f, "enc_{}", v.encoding().name()),
-            Codec::Decoder(v) => write!(f, "dec_{}", v.encoding().name()),
+            // this unsafe is ok, since we moved max to be on a char boundary.
+            let vec = unsafe { self.decoded.as_mut_vec() };
+            let rest = vec.split_off(max);
+            mem::replace(vec, rest);
+
+            Ok(max).into()
         }
     }
 }
 
 impl fmt::Debug for CharCodec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.0)
+        write!(
+            f,
+            "CharCodec {{ from: {}, to: {} }}",
+            self.dec.encoding().name(),
+            self.enc
+                .as_ref()
+                .map(|e| e.encoding())
+                .unwrap_or(encoding_rs::UTF_8)
+                .name()
+        )
     }
 }

@@ -75,7 +75,7 @@ pub async fn send_request_http2(
     parts.extensions.insert(params);
 
     let mut res_body = Body::new(BodyImpl::Http2(res_body), None, Some(unfinished_recs));
-    res_body.configure(params.deadline(), &parts.headers, true);
+    res_body.configure(params, &parts.headers, true);
 
     let res = http::Response::from_parts(parts, res_body);
 

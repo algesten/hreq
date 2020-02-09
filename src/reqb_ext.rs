@@ -98,6 +98,156 @@ where
     /// ["prior knowledge"]: https://http2.github.io/http2-spec/#known-http
     fn force_http2(self, force: bool) -> Self;
 
+    /// Toggle automatic request body charset encoding. Defaults to `true`.
+    ///
+    /// hreq encodes the request body of text MIME types according to the `charset` in
+    /// the `content-type` request header:
+    ///
+    ///   * `content-type: text/html; charset=iso8859-1`
+    ///
+    /// The behavior is triggered for any MIME type starting with `text/`. Because we're in rust,
+    /// there's an underlying assumption that the source of the request body is in `utf-8`,
+    /// but this can be changed using [`charset_encode_source`].
+    ///
+    /// Setting this to `false` disables any automatic charset encoding of the request body.
+    ///
+    /// # Examples
+    ///
+    /// You have plain text in a rust String (which is always utf-8) and you want to
+    /// POST it as `iso8859-1` (aka `latin-1`) request body. The default assumption
+    /// is that the source is in `utf-8`. You only need a `content-type` header.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// // This is a &str in rust default utf-8
+    /// let content = "Und in die Bäumen hängen Löwen und Bären";
+    ///
+    /// let req = Request::post("https://my-euro-server/")
+    ///     // This header converts the body to iso8859-1
+    ///     .header("content-type", "text/plain; charset=iso8859-1")
+    ///     .send(content).block();
+    /// ```
+    ///
+    /// Or if you have a plain text file in utf-8.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    /// use std::fs::File;
+    ///
+    /// let req = Request::post("https://my-euro-server/")
+    ///     // This header converts the body to iso8859-1
+    ///     .header("content-type", "text/plain; charset=iso8859-1")
+    ///     .send(File::open("my-utf8-file.txt").unwrap()).block();
+    /// ```
+    ///
+    /// If you want to disable automatic conversion of the request body.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    /// use std::fs::File;
+    ///
+    /// let req = Request::post("https://my-euro-server/")
+    ///     // Disable outgoing charset encoding.
+    ///     .charset_encode(false)
+    ///     // This header has no effect now.
+    ///     .header("content-type", "text/plain; charset=iso8859-1")
+    ///     .send(File::open("my-iso8859-1-file.txt").unwrap()).block();
+    /// ```
+    ///
+    /// [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
+    fn charset_encode(self, enable: bool) -> Self;
+
+    /// Sets how to interpret request body source. Defaults to `utf-8`.
+    ///
+    /// When doing charset conversion of the request body, this set how to interpret the
+    /// source of the body.
+    ///
+    /// The setting works together with the mechanic described in [`charset_encode`], i.e.
+    /// it is triggered by the presence of a `charset` part in a `content-type` request header
+    /// with a `text` MIME.
+    ///
+    ///   * `content-type: text/html; charset=iso8859-1`
+    ///
+    /// Notice if the [`Body`] is a rust `String` or `&str`, this setting is ignored since
+    /// the internal represenation is always `utf-8`.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// // おはよう世界 in EUC-JP.
+    /// let euc_jp = [164_u8, 170, 164, 207, 164, 232, 164, 166, 192, 164, 179, 166];
+    ///
+    /// let req = Request::post("https://my-japan-server/")
+    ///     // This header converts the body from EUC-JP to Shift-JIS
+    ///     .charset_encode_source("EUC-JP")
+    ///     .header("content-type", "text/plain; charset=Shift_JIS")
+    ///     .send(&euc_jp[..]).block();
+    /// ```
+    ///
+    /// [`charset_encode`]: trait.RequestBuilderExt.html#tymethod.charset_encode
+    /// [`Body`]: struct.Body.html
+    fn charset_encode_source(self, encoding: &str) -> Self;
+
+    /// Toggle automatic response body charset decoding. Defaults to `true`.
+    ///
+    /// hreq decodes the response body of text MIME types according to the `charset` in
+    /// the `content-type` response header:
+    ///
+    ///   * `content-type: text/html; charset=iso8859-1`
+    ///
+    /// The behavior is triggered for any MIME type starting with `text/`. Because we're in rust,
+    /// there's an underlying assumption that the wanted encoding is `utf-8`, but this can be
+    /// changed using [`charset_decode_target`].
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("https://my-euro-server/")
+    ///     .send(()).block().unwrap();
+    ///
+    /// assert_eq!(resp.header("content-type"), Some("text/html; charset=iso8859-1"));
+    ///
+    /// // this is now automatically converted to utf-8.
+    /// let string = resp.body_mut().read_to_string().block().unwrap();
+    /// ```
+    /// 
+    /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
+    fn charset_decode(self, enable: bool) -> Self;
+
+    /// Sets how to output the response body. Defaults to `utf-8`.
+    ///
+    /// When doing charset conversion of the response body, this sets how to output the
+    /// the response body.
+    ///
+    /// The setting works together with the mechanic described in [`charset_decode`], i.e.
+    /// it is triggered by the presence of a `charset` part in a `content-type` response header
+    /// with a `text` MIME.
+    ///
+    ///   * `content-type: text/html; charset=iso8859-1`
+    ///
+    /// Notice if you use the [`Body.read_to_string()`] method, this setting is ignored since
+    /// rust's internal representation is always `utf-8`.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// // Originating server sends content in Shift_JIS
+    /// let mut resp = Request::get("https://my-shift-jis-server/")
+    ///      // I want content in EUC-JP
+    ///     .charset_decode_target("EUC-JP")
+    ///     .send(()).block().unwrap();
+    ///
+    /// assert_eq!(resp.header("content-type"), Some("text/html; charset=Shift_JIS"));
+    ///
+    /// // this is now converted to EUC_JP
+    /// let vec = resp.body_mut().read_to_vec().block().unwrap();
+    /// ```
+    ///
+    /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
+    /// [`Body.read_to_string()`]: struct.Body.html#method.read_to_string
+    fn charset_decode_target(self, encoding: &str) -> Self;
+
     /// Finish building the request by providing something as [`Body`].
     ///
     /// [`Body`] implements a number of conventient `From` traits. We can trivially construct
@@ -193,6 +343,38 @@ impl RequestBuilderExt for request::Builder {
         })
     }
 
+    fn charset_encode(self, enable: bool) -> Self {
+        with_builder_store(self, |store| {
+            store.req_params.charset_encode = enable;
+        })
+    }
+
+    fn charset_encode_source(self, encoding: &str) -> Self {
+        with_builder_store(self, |store| {
+            let enc = Encoding::for_label(encoding.as_bytes());
+            if enc.is_none() {
+                warn!("Unknown character encoding: {}", encoding);
+            }
+            store.req_params.charset_encode_source = enc;
+        })
+    }
+
+    fn charset_decode(self, enable: bool) -> Self {
+        with_builder_store(self, |store| {
+            store.req_params.charset_decode = enable;
+        })
+    }
+
+    fn charset_decode_target(self, encoding: &str) -> Self {
+        with_builder_store(self, |store| {
+            let enc = Encoding::for_label(encoding.as_bytes());
+            if enc.is_none() {
+                warn!("Unknown character encoding: {}", encoding);
+            }
+            store.req_params.charset_decode_target = enc;
+        })
+    }
+
     fn with_body<B: Into<Body>>(self, body: B) -> http::Result<Request<Body>> {
         self.body(body.into())
     }
@@ -232,11 +414,19 @@ pub struct RequestParams {
     pub req_start: Option<Instant>,
     pub timeout: Option<Duration>,
     pub force_http2: bool,
+    pub charset_encode: bool,
+    pub charset_encode_source: Option<&'static Encoding>,
+    pub charset_decode: bool,
+    pub charset_decode_target: Option<&'static Encoding>,
 }
 
+use encoding_rs::Encoding;
+
 impl RequestParams {
-    fn new() -> Self {
+    pub fn new() -> Self {
         RequestParams {
+            charset_encode: true,
+            charset_decode: true,
             ..Default::default()
         }
     }

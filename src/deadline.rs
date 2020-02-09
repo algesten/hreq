@@ -17,10 +17,6 @@ pub struct Deadline {
 }
 
 impl Deadline {
-    pub fn inert() -> Self {
-        Self::new(None, None)
-    }
-
     pub fn new(req_start: Option<Instant>, timeout: Option<Duration>) -> Self {
         Deadline { req_start, timeout }
     }

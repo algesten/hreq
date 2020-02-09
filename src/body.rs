@@ -1,11 +1,12 @@
 use crate::charset::CharCodec;
-use crate::deadline::Deadline;
 use crate::h1::RecvStream as H1RecvStream;
+use crate::reqb_ext::RequestParams;
 use crate::res_ext::HeaderMapExt;
 use crate::tokio;
 use crate::AsyncRead;
 use crate::Error;
 use bytes::Bytes;
+use encoding_rs::Encoding;
 use futures_util::future::poll_fn;
 use futures_util::io::BufReader;
 use futures_util::ready;
@@ -29,9 +30,10 @@ const BUF_SIZE: usize = 16_384;
 pub struct Body {
     codec: BufReader<BodyCodec>,
     length: Option<u64>, // incoming length if given with reader
+    source_enc: Option<&'static Encoding>,
     has_read: bool,
     char_codec: Option<CharCodec>,
-    deadline: Deadline,
+    req_params: RequestParams,
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
 }
@@ -43,11 +45,14 @@ impl Body {
 
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Self {
-        Self::from_vec(text.to_owned().into_bytes())
+        Self::from_string(text.to_owned())
     }
 
     pub fn from_string(text: String) -> Self {
-        Self::from_vec(text.into_bytes())
+        let mut new = Self::from_vec(text.into_bytes());
+        // any string source is definitely UTF-8
+        new.source_enc = Some(encoding_rs::UTF_8);
+        new
     }
 
     pub fn from_vec(bytes: Vec<u8>) -> Self {
@@ -77,9 +82,10 @@ impl Body {
         Body {
             codec,
             length,
+            source_enc: None,
             has_read: false,
             char_codec: None,
-            deadline: Deadline::inert(),
+            req_params: RequestParams::new(),
             deadline_fut: None,
             unfinished_recs: unfin,
         }
@@ -90,7 +96,7 @@ impl Body {
     }
 
     pub(crate) fn content_encoded_length(&self) -> Option<u64> {
-        if self.codec.get_ref().affects_content_size() {
+        if self.codec.get_ref().affects_content_size() || self.char_codec.is_some() {
             // things like gzip will affect self.length
             None
         } else {
@@ -99,9 +105,10 @@ impl Body {
     }
 
     /// When calling this "content-encoding" and "content-type" must be settled.
+    #[allow(clippy::collapsible_if)]
     pub(crate) fn configure(
         &mut self,
-        deadline: Deadline,
+        req_params: RequestParams,
         headers: &http::header::HeaderMap,
         is_response: bool,
     ) {
@@ -109,7 +116,7 @@ impl Body {
             panic!("configure after body started reading");
         }
 
-        self.deadline = deadline;
+        self.req_params = req_params;
 
         let mut new_codec = None;
         if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
@@ -124,12 +131,37 @@ impl Body {
             mem::replace(self.codec.get_mut(), new_codec);
         }
 
-        // TODO do we want charset conversion for request bodies?
-        if is_response {
-            // TODO sniff charset from html pages like
-            // <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
-            if let Some(charset) = charset_from_headers(headers) {
-                self.char_codec = Some(CharCodec::new(charset, is_response));
+        // TODO sniff charset from html pages like
+        // <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+        if !is_response && req_params.charset_encode || is_response && req_params.charset_decode {
+            if let Some(charset_str) = charset_from_headers(headers) {
+                if let Some(charset) = Encoding::for_label(charset_str.as_bytes()) {
+                    let (from, to) = if is_response {
+                        let to = self
+                            .req_params
+                            // user set target encoding
+                            .charset_decode_target
+                            // default is UTF-8
+                            .unwrap_or(encoding_rs::UTF_8);
+                        (charset, to)
+                    } else {
+                        let from = self
+                            // the source_enc on the body overrides that of the req_params.
+                            // for instance a String source will always be UTF-8.
+                            .source_enc
+                            // user set source encoding
+                            .or(self.req_params.charset_encode_source)
+                            // default is UTF_8
+                            .unwrap_or(encoding_rs::UTF_8);
+                        (from, charset)
+                    };
+                    self.char_codec = Some(CharCodec::new(from, to));
+                } else {
+                    warn!(
+                        "Failed to interpret charset in content-type: {}",
+                        charset_str
+                    );
+                }
             }
         }
     }
@@ -167,6 +199,10 @@ impl Body {
     }
 
     pub async fn read_to_string(&mut self) -> Result<String, Error> {
+        // Remove any user set char encoder since we're reading to a rust string.
+        if let Some(char_codec) = &mut self.char_codec {
+            char_codec.remove_encoder();
+        }
         let vec = self.read_to_vec().await?;
         Ok(String::from_utf8_lossy(&vec).into())
     }
@@ -339,20 +375,19 @@ impl From<()> for Body {
 
 impl<'a> From<&'a str> for Body {
     fn from(s: &'a str) -> Self {
-        s.to_owned().into()
+        Body::from_str(s)
     }
 }
 
 impl<'a> From<&'a String> for Body {
     fn from(s: &'a String) -> Self {
-        s.clone().into()
+        Body::from_string(s.clone())
     }
 }
 
 impl From<String> for Body {
     fn from(s: String) -> Self {
-        let bytes = s.into_bytes();
-        bytes.into()
+        Body::from_string(s)
     }
 }
 
@@ -387,13 +422,13 @@ impl AsyncRead for Body {
             this.has_read = true;
         }
         if this.deadline_fut.is_none() {
-            this.deadline_fut = Some(this.deadline.delay_fut());
+            this.deadline_fut = Some(this.req_params.deadline().delay_fut());
         }
         if let Poll::Ready(err) = this.deadline_fut.as_mut().unwrap().as_mut().poll(cx) {
             return Poll::Ready(Err(err));
         }
         let amount = ready!(if let Some(char_codec) = &mut this.char_codec {
-            char_codec.poll_decode(cx, &mut this.codec, buf)
+            char_codec.poll_codec(cx, &mut this.codec, buf)
         } else {
             Pin::new(&mut this.codec).poll_read(cx, buf)
         })?;
