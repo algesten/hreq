@@ -882,13 +882,19 @@ impl From<String> for Body {
 
 impl<'a> From<&'a [u8]> for Body {
     fn from(bytes: &'a [u8]) -> Self {
-        bytes.to_vec().into()
+        Body::from_bytes(bytes)
     }
 }
 
 impl From<Vec<u8>> for Body {
     fn from(bytes: Vec<u8>) -> Self {
         Body::from_vec(bytes)
+    }
+}
+
+impl<'a> From<&'a Vec<u8>> for Body {
+    fn from(bytes: &'a Vec<u8>) -> Self {
+        Body::from_vec(bytes.clone())
     }
 }
 
