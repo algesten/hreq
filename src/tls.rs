@@ -39,7 +39,7 @@ pub(crate) async fn wrap_tls<S: Stream>(
     config.alpn_protocols = vec![ALPN_H2.to_owned(), ALPN_H1.to_owned()];
 
     let config = Arc::new(config);
-    let dnsname = DNSNameRef::try_from_ascii_str(domain)?;
+    let dnsname = DNSNameRef::try_from_ascii_str(domain).expect("Not a valid DNS name");
 
     let client = ClientSession::new(&config, dnsname);
 

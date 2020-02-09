@@ -1,3 +1,5 @@
+//! Request and response body. content-encoding, charset etc.
+
 use crate::charset::CharCodec;
 use crate::h1::RecvStream as H1RecvStream;
 use crate::reqb_ext::RequestParams;
@@ -27,6 +29,141 @@ use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
 
 const BUF_SIZE: usize = 16_384;
 
+/// Body of an http request or response.
+///
+/// # Request body
+///
+/// Request bodies are created either by using a constructor function, or the `Into` trait. The
+/// into trait can be used where rust knows the result should be `Body` such as in the request
+/// builder `.send()`.
+///
+/// ```no_run
+/// use hreq::prelude::*;
+///
+/// let res = Request::post("https://post-to-server/")
+///     // send has Into<Body> type, which means we can
+///     // provide the Into type straight up
+///     .send("some body content")
+///     .block().unwrap();
+/// ```
+///
+/// Or if we use `.into()` explcitly.
+///
+/// ```no_run
+/// use hreq::Body;
+///
+/// // call into() to get a Body
+/// let body: Body = "some body content".into();
+/// ```
+///
+/// The constructor with corresponding expression usable with `Into`.
+///
+/// | Constructor                            | Into                 |
+/// |----------------------------------------|----------------------|
+/// | `Body::empty()`                        | `()`                 |
+/// | `Body::from_str("abc")`                | `"abc"`              |
+/// | `Body::from_string("abc".to_string())` | `"abc".to_string()`  |
+/// | `Body::from_bytes(&[42_u8, 43_u8])`    | `&[42_u8, 43_u8]`    |
+/// | `Body::from_vec(vec![42_u8, 43_u8])`   | `vec![42_u8, 43_u8]` |
+/// | `Body::from_file(file)`                | `file`               |
+/// | `Body::from_async_read(reader, None)`  | -                    |
+/// | `Body::from_sync_read(reader, None)`   | -                    |
+///
+/// ## Readers and performance
+///
+/// The most performant way provide a large body is as an `AsyncRead`.
+/// It will be streamed through hreq without using up too much memory.
+///
+/// Sync readers risks blocking the async runtime. This is not a big
+/// concern if the reader is something like a `std::io::Cursor` over
+/// a slice of memory, or maybe even a `std::fs::File` with a fast
+/// disk. Choice of runtime also matters; `async-std` tries to
+/// automatically "parry" blocking operations. Use sync readers
+/// with caution and prefer async readers.
+///
+/// ## charset encoding
+///
+/// hreq automatically encodes the request body's character encoding
+/// for MIME types starting `text/`.
+///
+/// The mechanic is triggered by setting a `content-type` request header
+/// with the charset that is wanted:
+///
+///   * `content-type: text/html charset=iso8859-1`
+///
+/// The source material encoding is assumed to be `utf-8` unless
+/// changed by [`charset_encode_source`].
+///
+/// The behavior can be completely disabled using [`charset_encode`].
+///
+/// ### compression
+///
+/// hreq can compress the request body. The mechanic is triggered by setting
+/// a `content-encoding` header with the compression algorithm.
+///
+///   * `content-encoding: gzip`
+///
+/// The only supported algorithm is `gzip`.
+///
+///
+///
+/// # Response body
+///
+/// hreq provides a number of ways to read the response.
+///
+///   * [`Body.read()`]
+///   * [`Body.read_to_vec()`]
+///   * [`Body.read_to_string()`]
+///   * [`Body.read_to_end()`]
+///
+/// Finaly `Body` implements `AsyncRead`, which means that in many cases, it can be used
+/// as is in rust's async ecosystem.
+///
+/// ```no_run
+/// use hreq::prelude::*;
+/// use futures_util::io::AsyncReadExt;
+///
+/// let res = Request::get("https://my-special-host/")
+///     .send(()).block().unwrap();
+///
+/// let mut body = res.into_body();
+/// let mut first_ten = vec![0_u8; 10];
+/// // read_exact comes from AsyncReadExt
+/// body.read_exact(&mut first_ten[..]).block().unwrap();
+/// ```
+///
+/// ## charset decoding
+///
+/// hreq automatically decodes the response body's character encoding
+/// for MIME types starting `text/`.
+///
+/// The mechanic is triggered by receving a `content-type` response header
+/// with the charset of the incoming body:
+///
+///   * `content-type: text/html charset=iso8859-1`
+///
+/// The wanted charset is assumed to be `utf-8` unless changed by [`charset_decode_target`].
+///
+/// The function can be disabled by using [`charsed_decode`].
+///
+/// ## compression
+///
+/// hreq decompresses the request body. The mechanic is triggered by the presence
+/// of a `content-encoding: gzip` response header.
+///
+/// One can "ask" the server to compress the response by providing a header like
+/// `accept-encoding: gzip`. There's however no guarantee the server will provide compression.
+///
+/// The only supported algorithm is currently `gzip`.
+///
+/// [`Body.read()`]: struct.Body.html#method.read
+/// [`Body.read_to_vec()`]: struct.Body.html#method.read_to_vec
+/// [`Body.read_to_string()`]: struct.Body.html#method.read_to_string
+/// [`Body.read_to_end()`]: struct.Body.html#method.read_to_end
+/// [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
+/// [`charset_encode`]: trait.RequestBuilderExt.html#tymethod.charset_encode
+/// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
+/// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
 pub struct Body {
     codec: BufReader<BodyCodec>,
     length: Option<u64>, // incoming length if given with reader
@@ -39,15 +176,84 @@ pub struct Body {
 }
 
 impl Body {
+    /// Constructs an empty request body.
+    ///
+    /// The `content-length` is know to be `0` and will be set for requests where a body
+    /// is expected.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hreq::Body;
+    ///
+    /// // The are the same.
+    /// let body1: Body = Body::empty();
+    /// let body2: Body = ().into();
+    /// ```
+    ///
+    /// In `Request.send()` we can skip the `into()`
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// Request::get("https://get-from-here")
+    ///     .send(()).block().unwrap();
+    /// ```
     pub fn empty() -> Self {
         Self::new(BodyImpl::RequestEmpty, Some(0), None)
     }
 
+    /// Creates a request body from a `&str` by cloning the data.
+    ///
+    /// The request will have a `content-length` header unless compression or
+    /// chunked encoding is used.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hreq::Body;
+    ///
+    /// // The are the same.
+    /// let body1: Body = Body::from_str("Hello world");
+    /// let body2: Body = "Hello world".into();
+    /// ```
+    ///
+    /// In `Request.send()` we can skip the `into()`
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// Request::post("https://post-to-here")
+    ///     .send("Hello world").block().unwrap();
+    /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Self {
         Self::from_string(text.to_owned())
     }
 
+    /// Creates a request body from a `String`.
+    ///
+    /// The request will have a `content-length` header unless compression or
+    /// chunked encoding is used.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hreq::Body;
+    ///
+    /// // The are the same.
+    /// let body1: Body = Body::from_string("Hello world".to_string());
+    /// let body2: Body = "Hello world".to_string().into();
+    /// ```
+    ///
+    /// In `Request.send()` we can skip the `into()`
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// Request::post("https://post-to-here")
+    ///     .send("Hello world".to_string()).block().unwrap();
+    /// ```
     pub fn from_string(text: String) -> Self {
         let mut new = Self::from_vec(text.into_bytes());
         // any string source is definitely UTF-8
@@ -55,11 +261,107 @@ impl Body {
         new
     }
 
+    /// Creates a request body from a `&[u8]` by cloning the data.
+    ///
+    /// The request will have a `content-length` header unless compression or
+    /// chunked encoding is used.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hreq::Body;
+    ///
+    /// let data = [0x42, 0x43];
+    ///
+    /// // The are the same.
+    /// let body1: Body = Body::from_bytes(&data[..]);
+    /// let body2: Body = (&data[..]).into();
+    /// ```
+    ///
+    /// In `Request.send()` we can skip the `into()`
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// let data = [0x42, 0x43];
+    ///
+    /// Request::post("https://post-to-here")
+    ///     .send(&data[..]).block().unwrap();
+    /// ```
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        Self::from_vec(bytes.to_owned())
+    }
+
+    /// Creates a request body from a `Vec<u8>`.
+    ///
+    /// The request will have a `content-length` header unless compression or
+    /// chunked encoding is used.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hreq::Body;
+    ///
+    /// // The are the same.
+    /// let body1: Body = Body::from_vec(vec![0x42, 0x43]);
+    /// let body2: Body = vec![0x42, 0x43].into();
+    /// ```
+    ///
+    /// In `Request.send()` we can skip the `into()`
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// Request::post("https://post-to-here")
+    ///     .send(vec![0x42, 0x43]).block().unwrap();
+    /// ```
     pub fn from_vec(bytes: Vec<u8>) -> Self {
         let len = bytes.len() as u64;
         Self::from_sync_read(io::Cursor::new(bytes), Some(len))
     }
 
+    /// Creates a request body from a `std::fs::File`.
+    ///
+    /// Despite the `std` origins, hreq will send this efficiently by reading
+    /// the file in a non-blocking way.
+    ///
+    /// The request will have a `content-length` header unless compression or
+    /// chunked encoding is used.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hreq::Body;
+    /// use std::fs::File;
+    ///
+    /// // The are the same.
+    /// let body1: Body = Body::from_file(File::open("myfile.txt").unwrap());
+    /// let body2: Body = File::open("myfile.txt").unwrap().into();
+    /// ```
+    ///
+    /// In `Request.send()` we can skip the `into()`
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    /// use std::fs::File;
+    ///
+    /// Request::post("https://post-to-here")
+    ///     .send(File::open("myfile.txt").unwrap()).block().unwrap();
+    /// ```
+    pub fn from_file(file: fs::File) -> Self {
+        let len = file.metadata().ok().map(|m| m.len());
+        let async_file = File::from_std(file);
+        Body::from_async_read(tokio::from_tokio(async_file), len)
+    }
+
+    /// Creates a request from anything implementing the `AsyncRead` trait.
+    ///
+    /// This is a very efficient way of sending request bodies since the
+    /// content will be streamed through hreq without taking up much memory.
+    ///
+    /// The `content-length` header will be set depending on whether a
+    /// `length` is provided. Combinations of charset and compression might
+    /// make it so `content-length` is not known despite being provided.
     pub fn from_async_read<R>(reader: R, length: Option<u64>) -> Self
     where
         R: AsyncRead + Unpin + Send + Sync + 'static,
@@ -68,6 +370,18 @@ impl Body {
         Self::new(BodyImpl::RequestAsyncRead(boxed), length, None)
     }
 
+    /// Creates a request from anything implementing the (blocking) `std::io::Read` trait.
+    ///
+    /// Might block the async runtime, so whether using this is a good idea depends on
+    /// circumstances. If the `Read` is just an `std::io::Cursor` over some memory or
+    /// very fast file system, it might be ok. Some runtimes like `async-std` further
+    /// have ways of detecting blocking operations.
+    ///
+    /// Use with care.
+    ///
+    /// The `content-length` header will be set depending on whether a
+    /// `length` is provided. Combinations of charset and compression might
+    /// make it so `content-length` is not known despite being provided.
     pub fn from_sync_read<R>(reader: R, length: Option<u64>) -> Self
     where
         R: io::Read + Send + Sync + 'static,
@@ -76,6 +390,7 @@ impl Body {
         Self::new(BodyImpl::RequestRead(boxed), length, None)
     }
 
+    /// Creates a new Body
     pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>, unfin: Option<Arc<()>>) -> Self {
         let reader = BodyReader::new(bimpl);
         let codec = BufReader::new(BodyCodec::deferred(reader));
@@ -91,10 +406,13 @@ impl Body {
         }
     }
 
+    /// Tells if we know _for sure_, there is no body.
     pub(crate) fn is_definitely_no_body(&self) -> bool {
         self.length.map(|l| l == 0).unwrap_or(false)
     }
 
+    /// Tells the length of the body _with content encoding_. This could
+    /// take both gzip and charset into account, or just bail if we don't know.
     pub(crate) fn content_encoded_length(&self) -> Option<u64> {
         if self.codec.get_ref().affects_content_size() || self.char_codec.is_some() {
             // things like gzip will affect self.length
@@ -104,6 +422,8 @@ impl Body {
         }
     }
 
+    /// Configures the codecs in the body as part of the request or response.
+    ///
     /// When calling this "content-encoding" and "content-type" must be settled.
     #[allow(clippy::collapsible_if)]
     pub(crate) fn configure(
@@ -134,53 +454,94 @@ impl Body {
         // TODO sniff charset from html pages like
         // <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
         if !is_response && req_params.charset_encode || is_response && req_params.charset_decode {
-            if let Some(charset_str) = charset_from_headers(headers) {
-                if let Some(charset) = Encoding::for_label(charset_str.as_bytes()) {
-                    let (from, to) = if is_response {
-                        let to = self
-                            .req_params
-                            // user set target encoding
-                            .charset_decode_target
-                            // default is UTF-8
-                            .unwrap_or(encoding_rs::UTF_8);
-                        (charset, to)
-                    } else {
-                        let from = self
-                            // the source_enc on the body overrides that of the req_params.
-                            // for instance a String source will always be UTF-8.
-                            .source_enc
-                            // user set source encoding
-                            .or(self.req_params.charset_encode_source)
-                            // default is UTF_8
-                            .unwrap_or(encoding_rs::UTF_8);
-                        (from, charset)
-                    };
-                    self.char_codec = Some(CharCodec::new(from, to));
-                } else {
-                    warn!(
-                        "Failed to interpret charset in content-type: {}",
-                        charset_str
-                    );
-                }
-            }
+            self.configure_charset_codec(headers, is_response);
         }
     }
 
+    /// Configure the charset encoding according to headers and user preference.
+    fn configure_charset_codec(
+        &mut self,
+        headers: &http::header::HeaderMap,
+        is_response: bool,
+    ) -> Option<()> {
+        let charset_str = charset_from_headers(headers)?;
+        let charset = Encoding::for_label(charset_str.as_bytes())?;
+        let (from, to) = if is_response {
+            let to = self
+                .req_params
+                // user set target encoding
+                .charset_decode_target
+                // default is UTF-8
+                .unwrap_or(encoding_rs::UTF_8);
+            (charset, to)
+        } else {
+            let from = self
+                // the source_enc on the body overrides that of the req_params.
+                // for instance a String source will always be UTF-8.
+                .source_enc
+                // user set source encoding
+                .or(self.req_params.charset_encode_source)
+                // default is UTF_8
+                .unwrap_or(encoding_rs::UTF_8);
+            (from, charset)
+        };
+        self.char_codec = Some(CharCodec::new(from, to));
+        None
+    }
+
+    /// Read some bytes from this body into the specified buffer,
+    /// returning how many bytes were read.
+    ///
+    /// If the returned amount is `0`, the end of the body has been reached.
+    ///
+    /// See [`charset_decode`] and [`charset_decode_target`] of headers and options that will
+    /// affect `text/` MIME types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("https://www.google.com")
+    ///     .send(()).block().unwrap();
+    ///
+    /// let mut data = vec![0_u8; 100];
+    ///
+    /// let amount = resp.body_mut().read(&mut data[..]).block().unwrap();
+    ///
+    /// assert!(amount >= 15);
+    /// assert_eq!(&data[..15], b"<!doctype html>");
+    /// ```
+    ///
+    /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
+    /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         Ok(poll_fn(|cx| Pin::new(&mut *self).poll_read(cx, buf)).await?)
     }
 
-    pub async fn read_to_end(&mut self) -> Result<(), Error> {
-        let mut buf = vec![0_u8; BUF_SIZE];
-        loop {
-            let read = self.read(&mut buf).await?;
-            if read == 0 {
-                break;
-            }
-        }
-        Ok(())
-    }
-
+    /// Reads to body to end into a new `Vec`.
+    ///
+    /// This can potentially take up a lot of memory (or even exhaust your RAM), depending on
+    /// how big the response body is.
+    ///
+    /// See [`charset_decode`] and [`charset_decode_target`] of headers and options that will
+    /// affect `text/` MIME types.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("https://www.google.com")
+    ///     .send(()).block().unwrap();
+    ///
+    /// let data = resp.body_mut().read_to_vec().block().unwrap();
+    ///
+    /// assert_eq!(&data[..15], b"<!doctype html>");
+    /// ```
+    ///
+    /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
+    /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
     pub async fn read_to_vec(&mut self) -> Result<Vec<u8>, Error> {
         let mut vec = Vec::with_capacity(8192);
         let mut idx = 0;
@@ -198,13 +559,67 @@ impl Body {
         Ok(vec)
     }
 
+    /// Reads to body to end into a new `String`.
+    ///
+    /// This can potentially take up a lot of memory (or even exhaust your RAM), depending on
+    /// how big the response body is.
+    ///
+    /// Since a rust string is always `utf-8`, [`charset_decode_target`] is ignored.
+    ///
+    /// Panics if [`charset_decode`] is disabled and incoming data is not valid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("https://www.google.com")
+    ///     .send(()).block().unwrap();
+    ///
+    /// let data = resp.body_mut().read_to_string().block().unwrap();
+    ///
+    /// assert_eq!(&data[..15], "<!doctype html>");
+    /// ```
+    ///
+    /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
+    /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
     pub async fn read_to_string(&mut self) -> Result<String, Error> {
         // Remove any user set char encoder since we're reading to a rust string.
         if let Some(char_codec) = &mut self.char_codec {
             char_codec.remove_encoder();
         }
         let vec = self.read_to_vec().await?;
-        Ok(String::from_utf8_lossy(&vec).into())
+        Ok(String::from_utf8(vec).expect("Incoming body is not valid utf-8"))
+    }
+
+    /// Reads to body to end and discards it.
+    ///
+    /// HTTP/1.1 has no "multiplexing" of several concurrent request over the same socket;
+    /// One strictly have to read the previous request's body to end before being able to
+    /// read the next response header.
+    ///
+    /// For pooled connections we can't reuse the connection until the previous body has
+    /// been exhausted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("https://www.google.com")
+    ///     .send(()).block().unwrap();
+    ///
+    /// resp.body_mut().read_to_end();
+    /// ```
+    pub async fn read_to_end(&mut self) -> Result<(), Error> {
+        let mut buf = vec![0_u8; BUF_SIZE];
+        loop {
+            let read = self.read(&mut buf).await?;
+            if read == 0 {
+                break;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -405,9 +820,7 @@ impl From<Vec<u8>> for Body {
 
 impl From<fs::File> for Body {
     fn from(file: fs::File) -> Self {
-        let len = file.metadata().ok().map(|m| m.len());
-        let async_file = File::from_std(file);
-        Body::from_async_read(tokio::from_tokio(async_file), len)
+        Body::from_file(file)
     }
 }
 

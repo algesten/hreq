@@ -65,7 +65,7 @@ What are we doing?
   - [x] Follow redirects
   - [x] Retries
   - [x] 1_000_000 URLs?
-- [ ] Doc
+- [x] Doc
 - [ ] Metadata gathering through request
 - [ ] Make character sets optional (utf-8 only)
 - [ ] Flush after sending body

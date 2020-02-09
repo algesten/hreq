@@ -4,24 +4,29 @@ use std::io;
 
 #[cfg(feature = "tls")]
 use rustls::TLSError;
-#[cfg(feature = "tls")]
-use webpki::InvalidDNSNameError;
 
+/// Errors from hreq.
 #[derive(Debug)]
 pub enum Error {
+    /// The user of the lib did something to cause an error.
     User(String),
+    /// Some protocol level error when talking to a server, not the user's fault.
     Proto(String),
+    /// `std::io::Error`, such as connection problems, DNS lookup failures or timeouts.
     Io(io::Error),
+    /// Failures to parse incoming HTTP/1.1 responses.
     Http11Parser(httparse::Error),
+    /// Errors originating in HTTP/2 (via the `h2` crate).
     H2(h2::Error),
+    /// Error from the `http` crate, such as `http::Request`, `http::Response` or URI.
     Http(http::Error),
+    /// TLS (https) errors.
     #[cfg(feature = "tls")]
     TlsError(TLSError),
-    #[cfg(feature = "tls")]
-    DnsName(InvalidDNSNameError),
 }
 
 impl Error {
+    /// Tells whether the wrapper error is `std::io::Error`.
     pub fn is_io(&self) -> bool {
         match self {
             Error::Io(_) => true,
@@ -29,6 +34,7 @@ impl Error {
         }
     }
 
+    /// Converts this error to `std::io::Error`, if that is the wrapped error.
     pub fn into_io(self) -> Option<io::Error> {
         match self {
             Error::Io(e) => Some(e),
@@ -36,6 +42,8 @@ impl Error {
         }
     }
 
+    /// Tells if this error is a timeout. Timeout errors are `std::io::Error`  with
+    /// an `ErrorKind::TimedOut`.
     pub fn is_timeout(&self) -> bool {
         if let Error::Io(e) = self {
             if e.kind() == io::ErrorKind::TimedOut {
@@ -45,6 +53,7 @@ impl Error {
         false
     }
 
+    /// Agent retry function depends on this classifying retryable errors.
     pub(crate) fn is_retryable(&self) -> bool {
         match self {
             Error::Io(e) => match e.kind() {
@@ -70,8 +79,6 @@ impl fmt::Display for Error {
             Error::Http(v) => write!(f, "http api: {}", v),
             #[cfg(feature = "tls")]
             Error::TlsError(v) => write!(f, "tls: {}", v),
-            #[cfg(feature = "tls")]
-            Error::DnsName(v) => write!(f, "dns name: {}", v),
         }
     }
 }
@@ -116,12 +123,5 @@ impl From<http::Error> for Error {
 impl From<TLSError> for Error {
     fn from(e: TLSError) -> Self {
         Error::TlsError(e)
-    }
-}
-
-#[cfg(feature = "tls")]
-impl From<InvalidDNSNameError> for Error {
-    fn from(e: InvalidDNSNameError) -> Self {
-        Error::DnsName(e)
     }
 }
