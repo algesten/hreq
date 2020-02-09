@@ -37,8 +37,36 @@
 //!     Ok(())
 //! }
 //! ```
+//! # User first
+//! # http api
+//! # Blocking and async
+//! # Single threaded default
+//! # Async runtime
+//! # Agent, redirect and retries
+//! # Compression
+//! # Charset
+//! # Body size
+//! # JSON
 //!
-
+//! # Capabilities
+//!
+//! * Async or blocking
+//! * Pure rust
+//! * HTTP/2 and HTTP/1.1
+//! * TLS (https)
+//! * Timeout for entire request and reading the response
+//! * Switchable async runtime (`tokio` or `async-std`)
+//! * Single threaded by default
+//! * Built as an extension to `http` crate.
+//! * Query parameter manipulation in request builder
+//! * Many ways to create a request body
+//! * Follow redirects
+//! * Retry on connection problems
+//! * HTTP/1.1 transfer-encoding chunked
+//! * Gzip encode/decode
+//! * Charset encode/decode
+//! * Connection pooling
+//! * JSON serialize/deserialize
 #[macro_use]
 extern crate log;
 
