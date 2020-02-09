@@ -56,3 +56,23 @@ test_h1_h2! {
         }
     }
 }
+
+#[test]
+fn non_existing_host_name() {
+    super::test_setup();
+    let res = Request::get("https://tremendously-incorrect-host-name.com")
+        .send(())
+        .block();
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert!(err.is_io());
+}
+
+#[test]
+fn missing_scheme() {
+    super::test_setup();
+    let res = Request::get("why-no-scheme.com").send(()).block();
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    println!("{:?}", err);
+}

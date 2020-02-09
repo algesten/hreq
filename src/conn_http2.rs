@@ -47,7 +47,7 @@ pub async fn send_request_http2(
                     } else {
                         poll_fn(|cx| send_body.poll_capacity(cx))
                             .await
-                            .ok_or_else(|| Error::Message("Stream gone before capacity".into()))??
+                            .ok_or_else(|| Error::Proto("Stream gone before capacity".into()))??
                     }
                 };
                 // let actual_capacity = fut_cap.await?;

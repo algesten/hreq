@@ -307,14 +307,14 @@ impl Inner {
 
     fn get_remote_error(&mut self) -> Option<Error> {
         if let State::Closed = &mut self.state {
-            return Some(Error::Message(self.error.as_ref().unwrap().to_string()));
+            return Some(Error::Proto(self.error.as_ref().unwrap().to_string()));
         }
         None
     }
 
     fn assert_can_send_body(&mut self, seq: Seq) -> Option<Error> {
         if self.cur_seq > *seq {
-            return Some(Error::Message("Can't send body for old request".into()));
+            return Some(Error::User("Can't send body for old request".into()));
         }
         if self.cur_seq == *seq {
             match self.state {
@@ -328,7 +328,7 @@ impl Inner {
                 }
                 _ => {
                     let message = format!("Can't send body in state: {:?}", self.state);
-                    return Some(Error::Message(message));
+                    return Some(Error::User(message));
                 }
             }
         }

@@ -39,7 +39,7 @@ impl UriExt for http::Uri {
                 parts.authority = self.authority().cloned();
                 Ok(http::Uri::from_parts(parts).unwrap())
             }
-            _ => Err(Error::Message(format!("Unknown redirection: {}", uri))),
+            _ => Err(Error::Proto(format!("Bad redirection: {}", uri))),
         }
     }
 }
@@ -61,12 +61,12 @@ impl<'a> HostPort<'a> {
     pub fn from_uri(uri: &'a http::Uri) -> Result<Self, Error> {
         let scheme = uri
             .scheme()
-            .ok_or_else(|| format!("URI without scheme: {}", uri))?
+            .ok_or_else(|| Error::User(format!("URI without scheme: {}", uri)))?
             .as_str();
 
         let authority = uri
             .authority()
-            .ok_or_else(|| format!("URI without authority: {}", uri))?;
+            .ok_or_else(|| Error::User(format!("URI without authority: {}", uri)))?;
 
         let has_port = authority.port().is_some();
 
@@ -80,7 +80,7 @@ impl<'a> HostPort<'a> {
             let scheme_default = match scheme {
                 "http" => DEFAULT_PORT_HTTP,
                 "https" => DEFAULT_PORT_HTTPS,
-                _ => return Err(format!("Unknown URI scheme: {}", uri).into()),
+                _ => return Err(Error::User(format!("Unknown URI scheme: {}", uri))),
             };
             HostPort::DefaultPort {
                 host: authority.as_str(),

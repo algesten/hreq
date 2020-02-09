@@ -211,7 +211,7 @@ where
     /// // this is now automatically converted to utf-8.
     /// let string = resp.body_mut().read_to_string().block().unwrap();
     /// ```
-    /// 
+    ///
     /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
     fn charset_decode(self, enable: bool) -> Self;
 

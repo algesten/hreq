@@ -56,7 +56,7 @@ where
             if state == State::Closed {
                 if let Some(e) = inner.error.as_mut() {
                     trace!("Connection closed with error");
-                    let repl = io::Error::new(e.kind(), Error::Message(e.to_string()));
+                    let repl = io::Error::new(e.kind(), Error::Proto(e.to_string()));
                     let orig = mem::replace(e, repl);
                     return Err(orig).into();
                 } else {
