@@ -51,7 +51,7 @@ What are we doing?
 - [x] Cleanup Errors (implement Display proper)
 - [x] Don't send a body in HEAD/OPTIONS etc.
 - [ ] Set is_finished early if not content in response
-- [ ] Tests
+- [x] Tests
   - [x] Basic GET with query params
   - [x] Basic GET with headers
   - [x] Timeout
@@ -68,5 +68,5 @@ What are we doing?
 - [x] Doc
 - [ ] Metadata gathering through request
 - [ ] Make character sets optional (utf-8 only)
-- [ ] Flush after sending body
+- [x] Flush after sending body
 - [ ] More compressions?

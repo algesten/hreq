@@ -166,13 +166,16 @@ impl ConnectionPoll for SendBody {
         S: AsyncRead + AsyncWrite + Unpin,
     {
         loop {
-            let amount = ready!(Pin::new(&mut *io).poll_write(cx, &self.body[..]))?;
-            if amount < self.body.len() {
-                self.body = self.body.split_off(amount);
-                continue;
+            if self.body.is_empty() {
+                break;
             }
-            break;
+            let amount = ready!(Pin::new(&mut *io).poll_write(cx, &self.body[..]))?;
+            self.body = self.body.split_off(amount);
         }
+
+        // post sending body, flush
+        ready!(Pin::new(&mut *io).poll_flush(cx))?;
+
         // entire current send_body was sent, waker is for a
         // someone potentially waiting to send more.
         if let Some(waker) = self.task_waker.take() {
