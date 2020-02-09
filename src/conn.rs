@@ -118,6 +118,12 @@ impl Connection {
             parts.headers.set("accept", "*/*");
         }
 
+        if parts.headers.get("content-type").is_none() {
+            if let Some(ctype) = body.content_type() {
+                parts.headers.set("content-type", ctype);
+            }
+        }
+
         let req = http::Request::from_parts(parts, body);
 
         trace!("{} {} {} {}", self.p, self.addr, req.method(), req.uri());

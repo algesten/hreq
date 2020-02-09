@@ -10,6 +10,7 @@ use http::Uri;
 use http::{Request, Response};
 use once_cell::sync::Lazy;
 use qstring::QString;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -316,6 +317,49 @@ where
     async fn send<B>(self, body: B) -> Result<Response<Body>, Error>
     where
         B: Into<Body> + Send;
+
+    /// Finish building the request by providing an object serializable to JSON.
+    ///
+    /// Objects made serializable with serde_derive can be automatically turned into
+    /// bodies. This sets both `content-type` and `content-length`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use hreq::Body;
+    /// use serde_derive::Serialize;
+    ///  
+    /// #[derive(Serialize)]
+    /// struct MyJsonThing {
+    ///   name: String,
+    ///   age: String,
+    /// }
+    ///
+    /// let json = MyJsonThing {
+    ///   name: "Karl Kajal",
+    ///   age: "32",
+    /// };
+    ///
+    /// let req = Request::post("http://foo")
+    ///   .with_json(&json);
+    /// ```
+    fn with_json<B: Serialize + ?Sized>(self, body: &B) -> http::Result<Request<Body>>;
+
+    /// Send the built request with provided JSON object serialized to a body.
+    ///
+    /// Note: The type signature of this function is complicated because rust doesn't yet
+    /// support the `async` keyword in traits. You can think of this function as:
+    ///
+    /// ```ignore
+    /// async fn send_json<B>(self, body: &B) -> Result<Response<Body>, Error>
+    /// where
+    ///     B: Serialize + ?Sized + Send + Sync;
+    /// ```
+    ///
+    /// This is a shortcut to both provide a JSON body and send the request.
+    async fn send_json<B>(self, body: &B) -> Result<Response<Body>, Error>
+    where
+        B: Serialize + ?Sized + Send + Sync;
 }
 
 #[async_trait]
@@ -384,6 +428,19 @@ impl RequestBuilderExt for request::Builder {
         B: Into<Body> + Send,
     {
         let req = self.with_body(body)?;
+        Ok(req.send().await?)
+    }
+
+    fn with_json<B: Serialize + ?Sized>(self, body: &B) -> http::Result<Request<Body>> {
+        let body = Body::from_json(body);
+        self.with_body(body)
+    }
+
+    async fn send_json<B>(self, body: &B) -> Result<Response<Body>, Error>
+    where
+        B: Serialize + ?Sized + Send + Sync,
+    {
+        let req = self.with_json(body)?;
         Ok(req.send().await?)
     }
 }

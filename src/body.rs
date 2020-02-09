@@ -13,6 +13,8 @@ use futures_util::future::poll_fn;
 use futures_util::io::BufReader;
 use futures_util::ready;
 use h2::RecvStream as H2RecvStream;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::fmt;
 use std::fs;
 use std::future::Future;
@@ -28,6 +30,7 @@ use tokio_lib::fs::File;
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
 
 const BUF_SIZE: usize = 16_384;
+const CONTENT_TYPE_JSON: &str = "application/json; charset=utf-8";
 
 /// Body of an http request or response.
 ///
@@ -167,6 +170,7 @@ const BUF_SIZE: usize = 16_384;
 pub struct Body {
     codec: BufReader<BodyCodec>,
     length: Option<u64>, // incoming length if given with reader
+    content_typ: Option<&'static str>,
     source_enc: Option<&'static Encoding>,
     has_read: bool,
     char_codec: Option<CharCodec>,
@@ -354,6 +358,37 @@ impl Body {
         Body::from_async_read(tokio::from_tokio(async_file), len)
     }
 
+    /// Creates a body from a JSON encodable type.
+    ///
+    /// This also sets the `content-type` and `content-length` unless you override it in the
+    /// request builder.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use hreq::Body;
+    /// use serde_derive::Serialize;
+    ///
+    /// #[derive(Serialize)]
+    /// struct MyJsonThing {
+    ///   name: String,
+    ///   age: String,
+    /// }
+    ///
+    /// let json = MyJsonThing {
+    ///   name: "Karl Kajal",
+    ///   age: "32",
+    /// };
+    ///
+    /// let body = Body::from_json(&json);
+    /// ```
+    pub fn from_json<B: Serialize + ?Sized>(json: &B) -> Self {
+        let vec = serde_json::to_vec(json).expect("Failed to encode JSON");
+        let mut body = Self::from_vec(vec);
+        body.content_typ = Some(CONTENT_TYPE_JSON);
+        body
+    }
+
     /// Creates a request from anything implementing the `AsyncRead` trait.
     ///
     /// This is a very efficient way of sending request bodies since the
@@ -397,6 +432,7 @@ impl Body {
         Body {
             codec,
             length,
+            content_typ: None,
             source_enc: None,
             has_read: false,
             char_codec: None,
@@ -420,6 +456,11 @@ impl Body {
         } else {
             self.length
         }
+    }
+
+    /// The content type set by the body, if any.
+    pub(crate) fn content_type(&self) -> Option<&str> {
+        self.content_typ
     }
 
     /// Configures the codecs in the body as part of the request or response.
@@ -455,6 +496,16 @@ impl Body {
         // <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
         if !is_response && req_params.charset_encode || is_response && req_params.charset_decode {
             self.configure_charset_codec(headers, is_response);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_codec_pass(&mut self) {
+        if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
+            if let Some(reader) = reader.take() {
+                let new_codec = BodyCodec::Pass(reader);
+                mem::replace(self.codec.get_mut(), new_codec);
+            }
         }
     }
 
@@ -590,6 +641,29 @@ impl Body {
         }
         let vec = self.read_to_vec().await?;
         Ok(String::from_utf8(vec).expect("Incoming body is not valid utf-8"))
+    }
+
+    /// Reads to body to end as a JSON string into a deserialized object.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use hreq::Body;
+    /// use serde_derive::Deserialize;
+    ///  
+    /// #[derive(Deserialize)]
+    /// struct MyJsonThing {
+    ///   name: String,
+    ///   age: String,
+    /// }
+    ///
+    /// let req: MyJsonThing = Request::get("http://foo")
+    ///   .send(()).block().unwrap()
+    ///   .read_json().unwrap();
+    /// ```
+    pub async fn read_to_json<T: DeserializeOwned>(&mut self) -> Result<T, Error> {
+        let s = self.read_to_string().await?;
+        Ok(serde_json::from_str(&s)?)
     }
 
     /// Reads to body to end and discards it.

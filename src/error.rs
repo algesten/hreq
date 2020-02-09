@@ -20,6 +20,8 @@ pub enum Error {
     H2(h2::Error),
     /// Error from the `http` crate, such as `http::Request`, `http::Response` or URI.
     Http(http::Error),
+    /// JSON deserialization errors.
+    Json(serde_json::Error),
     /// TLS (https) errors.
     #[cfg(feature = "tls")]
     TlsError(TLSError),
@@ -77,6 +79,7 @@ impl fmt::Display for Error {
             Error::Http11Parser(v) => write!(f, "http11 parser: {}", v),
             Error::H2(v) => write!(f, "http2: {}", v),
             Error::Http(v) => write!(f, "http api: {}", v),
+            Error::Json(v) => write!(f, "json: {}", v),
             #[cfg(feature = "tls")]
             Error::TlsError(v) => write!(f, "tls: {}", v),
         }
@@ -116,6 +119,12 @@ impl From<h2::Error> for Error {
 impl From<http::Error> for Error {
     fn from(e: http::Error) -> Self {
         Error::Http(e)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Json(e)
     }
 }
 

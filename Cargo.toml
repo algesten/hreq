@@ -39,6 +39,8 @@ once_cell = "*"
 qstring = "*"
 async-trait = "*"
 encoding_rs = "*"
+serde = { version = "1", default-features = false }
+serde_json = { version = "1", default-features = false }
 # We always need tokio asyncwrite/asyncread traits because h2 uses them.
 tokio-traits = { path = "./tokio-traits" }
 
@@ -58,10 +60,12 @@ webpki = { version = "*", optional = true }
 webpki-roots = { version = "*", optional = true }
 
 [dev-dependencies]
+serde_derive = "1"
 tide = "0.6"
 async-std-lib = { package = "async-std", version = "*", features = ["unstable"] }
 paste = "0.1"
 rand = "0.7"
+
 
 [package.metadata.docs.rs]
 all-features = true

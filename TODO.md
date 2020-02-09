@@ -19,12 +19,12 @@ What are we doing?
   - [x] Query parameters
   - [ ] Username/password
   - [ ] authorization header
-  - [ ] Serialize JSON
+  - [x] Serialize JSON
 - Ergonomic body
   - [x] AsyncRead
   - [x] Read to Vec
   - [x] Read to String
-  - [ ] Read to JSON
+  - [x] Read to JSON
 - Body data transformations
   - [x] chunked encoding (my own)
   - [ ] x-www-form-urlencoded (write it?)

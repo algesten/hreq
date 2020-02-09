@@ -19,6 +19,7 @@ mod basic;
 mod charset;
 mod get;
 mod gzip;
+mod json;
 mod post;
 mod redir;
 mod simplelog;
