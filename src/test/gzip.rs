@@ -17,9 +17,8 @@ test_h1_h2! {
                 .body(().into())?;
             let data = b"Ok";
             let curs = Cursor::new(data);
-            let comp = flate2::Compression::fast();
             // doesn't seem tide provides this functionality.
-            let read = BufReader::new(GzipEncoder::new(BufReader::new(curs), comp));
+            let read = BufReader::new(GzipEncoder::new(BufReader::new(curs)));
             let resp = tide::Response::with_reader(200, read)
                 .set_header("content-encoding", "gzip");
             let (_server_req, client_res, client_bytes) = run_server(req, resp, |tide_req| {

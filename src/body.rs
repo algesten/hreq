@@ -724,8 +724,7 @@ impl BodyCodec {
             #[cfg(feature = "gzip")]
             (Some("gzip"), false) => {
                 let buf = BufReader::new(reader);
-                let comp = flate2::Compression::fast();
-                BodyCodec::GzipEncoder(GzipEncoder::new(buf, comp))
+                BodyCodec::GzipEncoder(GzipEncoder::new(buf))
             }
             _ => {
                 warn!("Unknown content-encoding: {:?}", encoding);

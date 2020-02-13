@@ -18,7 +18,6 @@ tokio = [
 ]
 gzip = [
     "async-compression",
-    "flate2"
 ]
 tls = [
     "rustls",
@@ -52,7 +51,6 @@ tokio-lib = { package = "tokio", version = "0.2", default-features = false, feat
 
 ## gzip
 async-compression = { version = "*", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
-flate2 = { version = "*", default-features = false, features = [], optional = true }
 
 ## tls
 rustls = { version = "0.16.0", default-features = false, features = [], optional = true }
