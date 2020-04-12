@@ -108,8 +108,6 @@ const CONTENT_TYPE_JSON: &str = "application/json; charset=utf-8";
 ///
 /// The only supported algorithm is `gzip`.
 ///
-///
-///
 /// # Response body
 ///
 /// hreq provides a number of ways to read the response.
@@ -365,19 +363,19 @@ impl Body {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```
     /// use hreq::Body;
     /// use serde_derive::Serialize;
     ///
     /// #[derive(Serialize)]
     /// struct MyJsonThing {
     ///   name: String,
-    ///   age: String,
+    ///   age: u8,
     /// }
     ///
     /// let json = MyJsonThing {
-    ///   name: "Karl Kajal",
-    ///   age: "32",
+    ///   name: "Karl Kajal".to_string(),
+    ///   age: 32,
     /// };
     ///
     /// let body = Body::from_json(&json);
@@ -500,6 +498,7 @@ impl Body {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn set_codec_pass(&mut self) {
         if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
             if let Some(reader) = reader.take() {
@@ -650,7 +649,7 @@ impl Body {
     /// ```ignore
     /// use hreq::Body;
     /// use serde_derive::Deserialize;
-    ///  
+    ///
     /// #[derive(Deserialize)]
     /// struct MyJsonThing {
     ///   name: String,
@@ -669,7 +668,7 @@ impl Body {
     /// Reads to body to end and discards it.
     ///
     /// HTTP/1.1 has no "multiplexing" of several concurrent request over the same socket;
-    /// One strictly have to read the previous request's body to end before being able to
+    /// One must read the previous request's body to end before being able to
     /// read the next response header.
     ///
     /// For pooled connections we can't reuse the connection until the previous body has

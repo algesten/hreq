@@ -35,14 +35,51 @@ static TOKIO_OWNED_RUNTIME: Lazy<Mutex<Option<TokioRuntime>>> = Lazy::new(|| Mut
 /// hreq supports async-std and tokio. Tokio support is enabled by default and comes in some
 /// different flavors.
 ///
-///   * `AsyncStd`. Requires the feature `async-std`. Supports `.block()`.
-///   * `TokioDefault`. The default option. A minimal tokio `rt-core` which executes calls
-///     in one single thread. It does nothing until the current thread blocks on
-///     a future using `.block()`.
-///   * `TokioShared`. Picks up on a shared runtime by using a [`Handle`]. This runtime
-///     cannot use the `.block()` extension trait since that requires having a direct
-///     connection to the tokio [`Runtime`].
-///   * `TokioOwned`. Uses a preconfigured tokio [`Runtime`] that is "handed over" to hreq.
+///   * `AsyncStd`. Requires the feature `async-std`. Supports
+///     `.block()`.
+///   * `TokioDefault`. The default option. A minimal tokio `rt-core`
+///     which executes calls in one single thread. It does nothing
+///     until the current thread blocks on a future using `.block()`.
+///   * `TokioShared`. Picks up on a globally shared runtime by using a
+///     [`Handle`]. This runtime cannot use the `.block()` extension
+///     trait since that requires having a direct connection to the
+///     tokio [`Runtime`].
+///   * `TokioOwned`. Uses a preconfigured tokio [`Runtime`] that is
+///     "handed over" to hreq.
+///
+///
+/// # Example using `AsyncStd`:
+///
+/// ```
+/// use hreq::AsyncRuntime;
+/// #[cfg(feature = "async-std")]
+/// AsyncRuntime::set_default(AsyncRuntime::AsyncStd, None);
+/// ```
+///
+/// # Example using a shared tokio.
+///
+/// ```
+/// use hreq::AsyncRuntime;
+///
+/// AsyncRuntime::set_default(AsyncRuntime::TokioShared, None);
+/// ```
+///
+/// # Example using an owned tokio.
+///
+/// ```
+/// use hreq::AsyncRuntime;
+/// // normally: use tokio::runtime::Builder;
+/// use tokio_lib::runtime::Builder;
+///
+/// let runtime = Builder::new()
+///   .enable_io()
+///   .enable_time()
+///   .build()
+///   .expect("Failed to build tokio runtime");
+///
+/// AsyncRuntime::set_default(AsyncRuntime::TokioOwned, Some(runtime));
+/// ```
+///
 ///
 /// [`Handle`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Handle.html
 /// [`Runtime`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Runtime.html
@@ -66,7 +103,7 @@ impl AsyncRuntime {
     ///
     /// Panics on an incorrect combination of first/second argument.
     ///
-    /// ```no_run
+    /// ```
     /// use hreq::AsyncRuntime;
     ///
     /// AsyncRuntime::set_default(AsyncRuntime::TokioShared, None);

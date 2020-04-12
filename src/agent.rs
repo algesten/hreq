@@ -29,6 +29,19 @@ use std::time::Duration;
 ///
 /// The settings can be changed, and are used for the next `.send()` call. It is possible
 /// to change the settings between calls.
+///
+/// ```
+/// use hreq::prelude::*;
+/// use hreq::Agent;
+///
+/// let mut agent = Agent::new();
+/// agent.retries(0); // disable all retries
+///
+/// let req = Request::get("https://www.google.com")
+///     .with_body(()).unwrap();
+///
+/// let res = agent.send(req).block();
+/// ```
 #[derive(Default)]
 pub struct Agent {
     connections: Vec<Connection>,
