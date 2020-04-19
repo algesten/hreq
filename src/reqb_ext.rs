@@ -256,13 +256,13 @@ where
     ///
     /// If the body data provided to hreq is already compressed we might need turn off
     /// the default behavior.
-    /// 
+    ///
     /// ```no_run
     /// use hreq::prelude::*;
     ///
     /// // imagine we got some already gzip compressed data
     /// let already_compressed: Vec<u8> = vec![];
-    /// 
+    ///
     /// let mut resp = Request::post("https://server-for-compressed/")
     ///     .header("content-encoding", "gzip")
     ///     .content_encode(false) // do not do extra encoding
@@ -276,7 +276,7 @@ where
     /// triggered by when hreq encounters the response header `content-encoding: gzip`.
     ///
     /// If we want to keep the body data compressed, we can turn off the default behavior.
-    /// 
+    ///
     /// ```no_run
     /// use hreq::prelude::*;
     ///
@@ -284,7 +284,7 @@ where
     ///     .header("accept-encoding", "gzip")
     ///     .content_decode(false) // do not do decompress
     ///     .call().block().unwrap();
-    /// 
+    ///
     /// // this content is still compressed
     /// let compressed = resp.body_mut().read_to_vec();
     /// ```
@@ -362,6 +362,13 @@ where
     /// Alias for sending an empty body and is the same as doing `.call()`.
     ///
     /// Typically used for get requests.
+    ///
+    /// Note: The type signature of this function is complicated because rust doesn't yet
+    /// support the `async` keyword in traits. You can think of this function as:
+    ///
+    /// ```ignore
+    /// async fn call(self) -> Result<Response<Body>, Error>;
+    /// ```
     ///
     /// ```
     /// use hreq::prelude::*;

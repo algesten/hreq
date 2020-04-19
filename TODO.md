@@ -66,8 +66,7 @@ What are we doing?
   - [x] Retries
   - [x] 1_000_000 URLs?
 - [x] Doc
-- [ ] First page doc
+- [x] First page doc
 - [ ] Metadata gathering through request
-- [ ] Make character sets optional (utf-8 only)
 - [x] Flush after sending body
 - [ ] More compressions?

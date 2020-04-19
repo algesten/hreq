@@ -134,7 +134,7 @@
 //!     .call().block();  // creates another new agent
 //! ```
 //!
-//! To use connection pooling and cookies between multiple calls, we need to 
+//! To use connection pooling and cookies between multiple calls, we need to
 //! create an agent.
 //!
 //! ```
@@ -206,7 +206,7 @@
 //!   .send("request that is compressed".to_string()).block();
 //! ```
 //!
-//! The automatic compression and decompression can be turned off, 
+//! The automatic compression and decompression can be turned off,
 //! see [`content_encode`] and [`content_decode`].
 //!
 //! # Charset
