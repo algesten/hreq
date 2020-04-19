@@ -116,11 +116,12 @@
 //! three main functions:
 //!
 //!   * Retries
-//!   * Connection pooling (when used through a specific agent)
-//!   * Cookie handling (when used through a specific agent)
+//!   * Connection pooling
+//!   * Cookie handling
 //!
 //! However the simplest use of hreq creates a new agent for every call, which
-//! means connection pooling and cookie handling is not happening.
+//! means connection pooling and cookie handling is only happening to a limited
+//! extent (when following redirects).
 //!
 //! ```
 //! use hreq::prelude::*;
@@ -133,8 +134,8 @@
 //!     .call().block();  // creates another new agent
 //! ```
 //!
-//! To use connection pooling and cookies, we need to create an agent
-//! that we reuse for each call.
+//! To use connection pooling and cookies between multiple calls, we need to 
+//! create an agent.
 //!
 //! ```
 //! use hreq::prelude::*;
@@ -297,6 +298,7 @@
 //! * JSON serialize/deserialize
 //!
 //! [http crate]: https://crates.io/crates/http
+//! [`rt-core`]: https://docs.rs/tokio/0.2.18/tokio/runtime/index.html#basic-scheduler
 //! [`TcpStream`]: https://doc.rust-lang.org/std/net/struct.TcpStream.html
 //! [`Handle`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Handle.html
 //! [`Runtime`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Runtime.html
@@ -305,6 +307,7 @@
 //! [Expect-100]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/100
 //! [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
 //! [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
+//! [serde]: https://crates.io/crates/serde
 #[macro_use]
 extern crate log;
 
