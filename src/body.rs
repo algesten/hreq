@@ -125,7 +125,7 @@ const CONTENT_TYPE_JSON: &str = "application/json; charset=utf-8";
 /// use futures_util::io::AsyncReadExt;
 ///
 /// let res = Request::get("https://my-special-host/")
-///     .send(()).block().unwrap();
+///     .call().block().unwrap();
 ///
 /// let mut body = res.into_body();
 /// let mut first_ten = vec![0_u8; 10];
@@ -199,7 +199,7 @@ impl Body {
     /// use hreq::prelude::*;
     ///
     /// Request::get("https://get-from-here")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     /// ```
     pub fn empty() -> Self {
         Self::new(BodyImpl::RequestEmpty, Some(0), None)
@@ -553,7 +553,7 @@ impl Body {
     /// use hreq::prelude::*;
     ///
     /// let mut resp = Request::get("https://www.google.com")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// let mut data = vec![0_u8; 100];
     ///
@@ -583,7 +583,7 @@ impl Body {
     /// use hreq::prelude::*;
     ///
     /// let mut resp = Request::get("https://www.google.com")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// let data = resp.body_mut().read_to_vec().block().unwrap();
     ///
@@ -624,7 +624,7 @@ impl Body {
     /// use hreq::prelude::*;
     ///
     /// let mut resp = Request::get("https://www.google.com")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// let data = resp.body_mut().read_to_string().block().unwrap();
     ///
@@ -657,7 +657,7 @@ impl Body {
     /// }
     ///
     /// let req: MyJsonThing = Request::get("http://foo")
-    ///   .send(()).block().unwrap()
+    ///   .call().block().unwrap()
     ///   .read_json().unwrap();
     /// ```
     pub async fn read_to_json<T: DeserializeOwned>(&mut self) -> Result<T, Error> {
@@ -680,7 +680,7 @@ impl Body {
     /// use hreq::prelude::*;
     ///
     /// let mut resp = Request::get("https://www.google.com")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// resp.body_mut().read_to_end();
     /// ```

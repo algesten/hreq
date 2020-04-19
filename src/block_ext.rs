@@ -33,7 +33,7 @@ use std::future::Future;
 /// use hreq::prelude::*;
 ///
 /// let res = Request::get("https://www.google.com")
-///     .send(()).block();
+///     .call().block();
 /// ```
 ///
 /// Another way is to group a series of async actions with
@@ -44,7 +44,7 @@ use std::future::Future;
 ///
 /// let body_str = async {
 ///     let res = Request::get("https://www.google.com")
-///         .send(()).await?;
+///         .call().await?;
 ///
 ///     let mut body = res.into_body();
 ///     body.read_to_string().await

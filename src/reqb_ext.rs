@@ -33,7 +33,7 @@ where
     ///
     /// Request::get("http://my-api/query")
     ///     .query("api-key", "secret sauce")
-    ///     .send(()).block();
+    ///     .call().block();
     /// ```
     ///
     /// Same name query parameters are appended, not replaced. I.e.
@@ -54,7 +54,7 @@ where
     ///
     /// let req = Request::get("https://www.google.com/")
     ///     .timeout(Duration::from_nanos(1))
-    ///     .send(()).block();
+    ///     .call().block();
     ///
     /// assert!(req.is_err());
     /// assert!(req.unwrap_err().is_timeout());
@@ -71,7 +71,7 @@ where
     ///
     /// let req = Request::get("https://www.google.com/")
     ///     .timeout_millis(10_000)
-    ///     .send(()).block();
+    ///     .call().block();
     ///
     /// assert!(req.is_err());
     /// assert!(req.unwrap_err().is_timeout());
@@ -92,7 +92,7 @@ where
     ///
     /// let req = Request::get("http://my-insecure-http2-server/")
     ///     .force_http2(true)
-    ///     .send(()).block();
+    ///     .call().block();
     /// ```
     ///
     /// [ALPN]: https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation
@@ -205,7 +205,7 @@ where
     /// use hreq::prelude::*;
     ///
     /// let mut resp = Request::get("https://my-euro-server/")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// assert_eq!(resp.header("content-type"), Some("text/html; charset=iso8859-1"));
     ///
@@ -237,7 +237,7 @@ where
     /// let mut resp = Request::get("https://my-shift-jis-server/")
     ///      // I want content in EUC-JP
     ///     .charset_decode_target("EUC-JP")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// assert_eq!(resp.header("content-type"), Some("text/html; charset=Shift_JIS"));
     ///
@@ -298,7 +298,7 @@ where
     /// use hreq::prelude::*;
     ///
     /// let res1 = Request::get("https://www.google.com")
-    ///     .send(()).block();
+    ///     .call().block();
     ///
     /// let res2 = Request::get("https://www.google.com")
     ///     .with_body(()) // constructs the Request
@@ -318,6 +318,18 @@ where
     where
         B: Into<Body> + Send;
 
+    /// Alias for sending an empty body and is the same as doing `.call()`.
+    ///
+    /// Typically used for get requests.
+    ///
+    /// ```
+    /// use hreq::prelude::*;
+    ///
+    /// let res = Request::get("https://www.google.com")
+    ///     .call().block();
+    /// ```
+    async fn call(self) -> Result<Response<Body>, Error>;
+
     /// Finish building the request by providing an object serializable to JSON.
     ///
     /// Objects made serializable with serde_derive can be automatically turned into
@@ -328,7 +340,7 @@ where
     /// ```ignore
     /// use hreq::Body;
     /// use serde_derive::Serialize;
-    ///  
+    ///
     /// #[derive(Serialize)]
     /// struct MyJsonThing {
     ///   name: String,
@@ -429,6 +441,10 @@ impl RequestBuilderExt for request::Builder {
     {
         let req = self.with_body(body)?;
         Ok(req.send().await?)
+    }
+
+    async fn call(self) -> Result<Response<Body>, Error> {
+        Ok(self.send(()).await?)
     }
 
     fn with_json<B: Serialize + ?Sized>(self, body: &B) -> http::Result<Request<Body>> {

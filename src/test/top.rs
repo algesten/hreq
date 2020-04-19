@@ -19,7 +19,7 @@ fn get_top_sites() {
         println!("{:?}", url);
         match http::Request::get(&url)
             .timeout_millis(5_000)
-            .send(())
+            .call()
             .block()
         {
             Ok(mut resp) => match resp.body_mut().read_to_vec().block() {
@@ -38,7 +38,7 @@ fn get_top_sites() {
 fn get_apple() {
     super::test_setup();
     let resp = http::Request::get("https://apple.com")
-        .send(())
+        .call()
         .block()
         .unwrap();
     assert_eq!(200, resp.status_code());
@@ -48,7 +48,7 @@ fn get_apple() {
 fn get_blogspot() {
     super::test_setup();
     let mut resp = http::Request::get("https://blogspot.com")
-        .send(())
+        .call()
         .block()
         .unwrap();
     assert_eq!(400, resp.status_code());
@@ -59,7 +59,7 @@ fn get_blogspot() {
 fn get_player_vimeo() {
     super::test_setup();
     let mut resp = http::Request::get("https://player.vimeo.com")
-        .send(())
+        .call()
         .block()
         .unwrap();
     assert_eq!(200, resp.status_code());
@@ -72,7 +72,7 @@ fn get_macromedia() {
     super::test_setup();
     let mut resp = http::Request::get("https://macromedia.com")
         .timeout_millis(10_000)
-        .send(())
+        .call()
         .block()
         .unwrap();
     assert_eq!(200, resp.status_code());
@@ -85,7 +85,7 @@ fn get_youtube() {
     super::test_setup();
     let mut resp = http::Request::get("https://youtube.com")
         .timeout_millis(10_000)
-        .send(())
+        .call()
         .block()
         .unwrap();
     assert_eq!(200, resp.status_code());

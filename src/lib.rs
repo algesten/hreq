@@ -18,7 +18,7 @@
 //!     let response = Request::builder()
 //!         .uri("https://myapi.acme.com/ingest")
 //!         .query("api_key", "secret")
-//!         .send(()).block()?;
+//!         .call().block()?;
 //!
 //!     // More convenience on the http response.
 //!     // Like shortcuts to read or parse
@@ -75,7 +75,7 @@
 //! use hreq::prelude::*;
 //!
 //! let res = Request::get("https://www.google.com")
-//!     .send(()).block();
+//!     .call().block();
 //! ```
 //!
 //! ## Why?
@@ -126,11 +126,11 @@
 //! use hreq::prelude::*;
 //!
 //! let res1 = Request::get("https://www.google.com")
-//!     .send(()).block();  // creates a new agent
+//!     .call().block();  // creates a new agent
 //!
 //! // this call doesn't reuse any cookies or connections.
 //! let res2 = Request::get("https://www.google.com")
-//!     .send(()).block();  // creates another new agent
+//!     .call().block();  // creates another new agent
 //! ```
 //!
 //! To use connection pooling and cookies, we need to create an agent

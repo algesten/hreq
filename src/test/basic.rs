@@ -61,7 +61,7 @@ test_h1_h2! {
 fn non_existing_host_name() {
     super::test_setup();
     let res = Request::get("https://tremendously-incorrect-host-name.com")
-        .send(())
+        .call()
         .block();
     assert!(res.is_err());
     let err = res.unwrap_err();
@@ -71,7 +71,7 @@ fn non_existing_host_name() {
 #[test]
 fn missing_scheme() {
     super::test_setup();
-    let res = Request::get("why-no-scheme.com").send(()).block();
+    let res = Request::get("why-no-scheme.com").call().block();
     assert!(res.is_err());
     let err = res.unwrap_err();
     println!("{:?}", err);

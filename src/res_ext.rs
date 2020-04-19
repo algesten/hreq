@@ -21,7 +21,7 @@ pub trait ResponseExt {
     /// use hreq::prelude::*;
     ///
     /// let res = Request::get("https://www.google.com")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// let x_frame_opts = res.header("x-frame-options").unwrap();
     ///
@@ -39,7 +39,7 @@ pub trait ResponseExt {
     /// use hreq::prelude::*;
     ///
     /// let res = Request::get("https://my-api")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// let req_id: u64 = res.header_as("x-req-id").unwrap();
     /// ```
@@ -53,7 +53,7 @@ pub trait ResponseExt {
     /// use hreq::prelude::*;
     ///
     /// let res = Request::get("https://www.google.com")
-    ///     .send(()).block().unwrap();
+    ///     .call().block().unwrap();
     ///
     /// assert_eq!(res.status_code(), 200);
     ///
