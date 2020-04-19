@@ -480,8 +480,14 @@ impl Body {
         let mut new_codec = None;
         if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
             if let Some(reader) = reader.take() {
-                let encoding = headers.get_str("content-encoding");
-                new_codec = Some(BodyCodec::from_encoding(reader, encoding, is_response))
+                let use_enc = !is_response && self.req_params.content_encode
+                    || is_response && self.req_params.content_decode;
+                new_codec = if use_enc {
+                    let encoding = headers.get_str("content-encoding");
+                    Some(BodyCodec::from_encoding(reader, encoding, is_response))
+                } else {
+                    Some(BodyCodec::Pass(reader))
+                };
             }
         }
 

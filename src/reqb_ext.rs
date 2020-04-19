@@ -249,6 +249,47 @@ where
     /// [`Body.read_to_string()`]: struct.Body.html#method.read_to_string
     fn charset_decode_target(self, encoding: &str) -> Self;
 
+    /// Whether to use the `content-encoding` request header. Defaults to `true`.
+    ///
+    /// By default hreq encodes compressed body data automatically. The behavior is
+    /// triggered by setting the request header `content-encoding: gzip`.
+    ///
+    /// If the body data provided to hreq is already compressed we might need turn off
+    /// the default behavior.
+    /// 
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// // imagine we got some already gzip compressed data
+    /// let already_compressed: Vec<u8> = vec![];
+    /// 
+    /// let mut resp = Request::post("https://server-for-compressed/")
+    ///     .header("content-encoding", "gzip")
+    ///     .content_encode(false) // do not do extra encoding
+    ///     .send(already_compressed).block().unwrap();
+    /// ```
+    fn content_encode(self, enabled: bool) -> Self;
+
+    /// Whether to use the `content-encoding` response header. Defaults to `true`.
+    ///
+    /// By default hreq decodes compressed body data automatically. The behavior is
+    /// triggered by when hreq encounters the response header `content-encoding: gzip`.
+    ///
+    /// If we want to keep the body data compressed, we can turn off the default behavior.
+    /// 
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("https://server-for-compressed/")
+    ///     .header("accept-encoding", "gzip")
+    ///     .content_decode(false) // do not do decompress
+    ///     .call().block().unwrap();
+    /// 
+    /// // this content is still compressed
+    /// let compressed = resp.body_mut().read_to_vec();
+    /// ```
+    fn content_decode(self, enabled: bool) -> Self;
+
     /// Finish building the request by providing something as [`Body`].
     ///
     /// [`Body`] implements a number of conventient `From` traits. We can trivially construct
@@ -431,6 +472,18 @@ impl RequestBuilderExt for request::Builder {
         })
     }
 
+    fn content_encode(self, enable: bool) -> Self {
+        with_builder_store(self, |store| {
+            store.req_params.content_encode = enable;
+        })
+    }
+
+    fn content_decode(self, enable: bool) -> Self {
+        with_builder_store(self, |store| {
+            store.req_params.content_decode = enable;
+        })
+    }
+
     fn with_body<B: Into<Body>>(self, body: B) -> http::Result<Request<Body>> {
         self.body(body.into())
     }
@@ -491,6 +544,8 @@ pub struct RequestParams {
     pub charset_encode_source: Option<&'static Encoding>,
     pub charset_decode: bool,
     pub charset_decode_target: Option<&'static Encoding>,
+    pub content_encode: bool,
+    pub content_decode: bool,
 }
 
 use encoding_rs::Encoding;
@@ -500,6 +555,8 @@ impl RequestParams {
         RequestParams {
             charset_encode: true,
             charset_decode: true,
+            content_encode: true,
+            content_decode: true,
             ..Default::default()
         }
     }

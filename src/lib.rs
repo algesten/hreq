@@ -206,7 +206,8 @@
 //!   .send("request that is compressed".to_string()).block();
 //! ```
 //!
-//! TODO: provide a way to disable gzip encoding/decoding of body.
+//! The automatic compression and decompression can be turned off, 
+//! see [`content_encode`] and [`content_decode`].
 //!
 //! # Charset
 //!
@@ -305,6 +306,8 @@
 //! [`AsyncRuntime`]: enum.AsyncRuntime.html
 //! [`Agent`]: struct.Agent.html
 //! [Expect-100]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/100
+//! [`content_encode`]: trait.RequestBuilderExt.html#tymethod.content_encode
+//! [`content_decode`]: trait.RequestBuilderExt.html#tymethod.content_decode
 //! [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
 //! [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
 //! [serde]: https://crates.io/crates/serde
