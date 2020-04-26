@@ -298,6 +298,7 @@ let body = Body::from_json(&json);
 * Charset encode/decode
 * Connection pooling
 * JSON serialize/deserialize
+* Cookies
 
 [http crate]: https://crates.io/crates/http
 [`rt-core`]: https://docs.rs/tokio/0.2.18/tokio/runtime/index.html#basic-scheduler
