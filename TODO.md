@@ -42,7 +42,7 @@ What are we doing?
   - [ ] Connection pool timeout
   - [ ] Max connections in pool
   - [ ] Max connections per host
-- [ ] Cookie state in connection (cookie)
+- [x] Cookie state in connection (cookie)
 - [x] Follow redirects
 - [ ] Expect-100 and 307/308 redirects.
 - [ ] HTTP Proxy

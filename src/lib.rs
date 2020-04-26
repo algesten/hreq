@@ -322,6 +322,7 @@ mod charset;
 mod conn;
 mod conn_http1;
 mod conn_http2;
+mod cookies;
 mod deadline;
 mod either;
 mod error;

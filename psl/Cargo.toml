@@ -1,0 +1,11 @@
+[package]
+name = "psl"
+version = "0.1.0"
+authors = ["Martin Algesten <martin@algesten.se>"]
+edition = "2018"
+
+[dependencies]
+flate2 = "*"
+log = "*"
+once_cell = "*"
+publicsuffix = "*"

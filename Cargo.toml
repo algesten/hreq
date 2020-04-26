@@ -27,9 +27,9 @@ tls = [
 
 [dependencies]
 bytes = "*"
-cookie = "*"
+cookie = { version = "*", features = ["percent-encode"] }
 futures-io = { version = "0.3" }
-futures-util = { version = "0.3", features=["io"] }
+futures-util = { version = "0.3", features = ["io"] }
 h2 = "*"
 http = "*"
 httparse = "*"
@@ -42,6 +42,10 @@ serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 # We always need tokio asyncwrite/asyncread traits because h2 uses them.
 tokio-traits = { path = "./tokio-traits" }
+# Public suffix list compiled into the source
+psl = { path = "./psl" }
+# keep in sync with time brought in by cookie
+time = "=0.2.9"
 
 ## async-std
 async-std-lib = { package = "async-std", version = "*", optional = true }

@@ -2,6 +2,7 @@
 
 use crate::async_impl::AsyncRuntime;
 use crate::connect;
+use crate::cookies::Cookies;
 use crate::reqb_ext::resolve_hreq_ext;
 use crate::reqb_ext::RequestParams;
 use crate::uri_ext::UriExt;
@@ -9,6 +10,7 @@ use crate::Body;
 use crate::Connection;
 use crate::Error;
 use crate::ResponseExt;
+use cookie::Cookie;
 use std::time::Duration;
 
 /// Agents provide redirects, connection pooling, cookies and retries.
@@ -45,9 +47,11 @@ use std::time::Duration;
 #[derive(Default)]
 pub struct Agent {
     connections: Vec<Connection>,
+    cookies: Option<Cookies>,
     redirects: i8,
     retries: i8,
     pooling: bool,
+    use_cookies: bool,
 }
 
 impl Agent {
@@ -61,9 +65,11 @@ impl Agent {
     pub fn new() -> Self {
         Agent {
             connections: vec![],
+            cookies: None,
             redirects: 5,
             retries: 5,
             pooling: true,
+            use_cookies: true,
         }
     }
 
@@ -117,6 +123,36 @@ impl Agent {
         self.pooling = enabled;
         if !enabled {
             self.connections.clear();
+        }
+    }
+
+    /// Turns on or off the use of cookies.
+    ///
+    /// Defaults to `true`. Set to `false` to disable use of cookies.
+    ///
+    /// The setting will be used for the next call to `.send()`.
+    ///
+    /// When set to `false`, any previous collected cookie will be dropped.
+    ///
+    /// ```
+    /// use hreq::Agent;
+    ///
+    /// let mut agent = Agent::new();
+    /// agent.cookies(false);
+    /// ```
+    pub fn cookies(&mut self, enabled: bool) {
+        self.use_cookies = enabled;
+        if !enabled {
+            self.cookies = None;
+        }
+    }
+
+    /// Get all cookies held in this agent matching the given uri.
+    pub fn get_cookies(&self, uri: &http::Uri) -> Vec<&Cookie<'static>> {
+        if let Some(cookies) = &self.cookies {
+            cookies.get(uri)
+        } else {
+            vec![]
         }
     }
 
@@ -181,13 +217,22 @@ impl Agent {
         // the request should be time limited regardless of retries. the entire do_send()
         // is wrapped in a ticking timer...
         let deadline = params.deadline();
-        deadline.race(self.do_send(req, params)).await
+
+        // for lifetime reasons it's easier to handle the cookie storage separately
+        let mut cookies = self.cookies.take();
+
+        let ret = deadline.race(self.do_send(req, params, &mut cookies)).await;
+
+        self.cookies = cookies;
+
+        ret
     }
 
     async fn do_send(
         &mut self,
         req: http::Request<Body>,
         params: RequestParams,
+        cookies: &mut Option<Cookies>,
     ) -> Result<http::Response<Body>, Error> {
         trace!("Agent {} {}", req.method(), req.uri());
 
@@ -196,11 +241,26 @@ impl Agent {
         let mut redirects = self.redirects;
         let pooling = self.pooling;
         let mut unpooled: Option<Connection> = None;
+        let use_cookies = self.use_cookies;
 
         let mut next_req = req;
 
         loop {
-            let req = next_req;
+            let mut req = next_req;
+            let uri = req.uri().clone();
+
+            // add cookies to send
+            if self.use_cookies {
+                if let Some(cookies) = cookies {
+                    let cookies = cookies.get(&uri);
+                    for cookie in cookies {
+                        let cval = cookie.encoded().to_string();
+                        let val = http::header::HeaderValue::from_str(&cval)
+                            .expect("Cookie header value");
+                        req.headers_mut().append("cookie", val);
+                    }
+                }
+            }
 
             // remember whether request is idempotent in case we are to retry
             let is_idempotent = req.method().is_idempotent();
@@ -209,13 +269,13 @@ impl Agent {
             next_req = clone_to_empty_body(&req);
 
             // grab connection for the current request
-            let conn = match self.reuse_from_pool(req.uri())? {
+            let conn = match self.reuse_from_pool(&uri)? {
                 Some(conn) => conn,
                 None => {
                     if pooling {
-                        self.connect_and_pool(req.uri(), params.force_http2).await?
+                        self.connect_and_pool(&uri, params.force_http2).await?
                     } else {
-                        let conn = connect(req.uri(), params.force_http2).await?;
+                        let conn = connect(&uri, params.force_http2).await?;
                         unpooled.replace(conn);
                         unpooled.as_mut().unwrap()
                     }
@@ -224,6 +284,24 @@ impl Agent {
 
             match conn.send_request(req).await {
                 Ok(mut res) => {
+                    // squirrel away cookies (also in redirects)
+                    if use_cookies {
+                        for cookie_head in res.headers().get_all("set-cookie") {
+                            if let Ok(v) = cookie_head.to_str() {
+                                if let Ok(cookie) = Cookie::parse_encoded(v.to_string()) {
+                                    if cookies.is_none() {
+                                        *cookies = Some(Cookies::new());
+                                    }
+                                    cookies.as_mut().unwrap().add(&uri, cookie);
+                                } else {
+                                    info!("Failed to parse cookie: {}", v);
+                                }
+                            } else {
+                                info!("Failed to read cookie value: {:?}", cookie_head);
+                            }
+                        }
+                    }
+
                     // follow redirections
                     let code = res.status_code();
                     if res.status().is_redirection() {
