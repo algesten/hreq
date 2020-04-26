@@ -1,8 +1,10 @@
 use crate::Error;
+use once_cell::sync::Lazy;
 use std::fmt;
 
-const DEFAULT_PORT_HTTP: &str = "80";
-const DEFAULT_PORT_HTTPS: &str = "443";
+const DEFAULT_PORT_HTTP: u16 = 80;
+const DEFAULT_PORT_HTTPS: u16 = 443;
+static DEFAULT_URI: Lazy<http::Uri> = Lazy::new(|| http::Uri::from_static("http://localhost/"));
 
 pub trait MethodExt {
     fn indicates_body(&self) -> bool;
@@ -92,49 +94,51 @@ impl UriExt for http::Uri {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum HostPort<'a> {
-    HasPort {
+    Shared {
         host: &'a str,
-        with_port: &'a str,
+        port: u16,
         is_tls: bool,
     },
-    DefaultPort {
-        host: &'a str,
-        port: &'a str,
+    Owned {
+        host: String,
+        port: u16,
         is_tls: bool,
     },
+}
+
+impl HostPort<'static> {
+    pub fn new(host: &str, port: u16, tls: bool) -> Self {
+        HostPort::Owned {
+            host: host.to_string(),
+            port,
+            is_tls: tls,
+        }
+    }
 }
 
 impl<'a> HostPort<'a> {
     pub fn from_uri(uri: &'a http::Uri) -> Result<Self, Error> {
         let scheme = uri
             .scheme()
-            .ok_or_else(|| Error::User(format!("URI without scheme: {}", uri)))?
+            .unwrap_or_else(|| DEFAULT_URI.scheme().unwrap())
             .as_str();
 
         let authority = uri
             .authority()
-            .ok_or_else(|| Error::User(format!("URI without authority: {}", uri)))?;
+            .unwrap_or_else(|| DEFAULT_URI.authority().unwrap());
 
-        let has_port = authority.port().is_some();
+        let scheme_default = match scheme {
+            "http" => DEFAULT_PORT_HTTP,
+            "https" => DEFAULT_PORT_HTTPS,
+            _ => return Err(Error::User(format!("Unknown URI scheme: {}", uri))),
+        };
 
-        let hostport = if has_port {
-            HostPort::HasPort {
-                host: authority.host(),
-                with_port: authority.as_str(),
-                is_tls: scheme == "https",
-            }
-        } else {
-            let scheme_default = match scheme {
-                "http" => DEFAULT_PORT_HTTP,
-                "https" => DEFAULT_PORT_HTTPS,
-                _ => return Err(Error::User(format!("Unknown URI scheme: {}", uri))),
-            };
-            HostPort::DefaultPort {
-                host: authority.as_str(),
-                port: scheme_default,
-                is_tls: scheme == "https",
-            }
+        let hostport = HostPort::Shared {
+            host: authority.host(),
+            port: authority.port_u16().unwrap_or(scheme_default),
+            is_tls: scheme == "https",
         };
 
         Ok(hostport)
@@ -142,15 +146,30 @@ impl<'a> HostPort<'a> {
 
     pub fn host(&self) -> &str {
         match self {
-            HostPort::HasPort { host, .. } => host,
-            HostPort::DefaultPort { host, .. } => host,
+            HostPort::Shared { host, .. } => host,
+            HostPort::Owned { host, .. } => &host,
+        }
+    }
+
+    pub fn port(&self) -> u16 {
+        match self {
+            HostPort::Shared { port, .. } => *port,
+            HostPort::Owned { port, .. } => *port,
         }
     }
 
     pub fn is_tls(&self) -> bool {
         match self {
-            HostPort::HasPort { is_tls, .. } => *is_tls,
-            HostPort::DefaultPort { is_tls, .. } => *is_tls,
+            HostPort::Shared { is_tls, .. } => *is_tls,
+            HostPort::Owned { is_tls, .. } => *is_tls,
+        }
+    }
+
+    pub fn to_owned(&self) -> HostPort<'static> {
+        HostPort::Owned {
+            host: self.host().to_string(),
+            port: self.port(),
+            is_tls: self.is_tls(),
         }
     }
 }
@@ -158,9 +177,15 @@ impl<'a> HostPort<'a> {
 impl<'a> fmt::Display for HostPort<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HostPort::HasPort { with_port, .. } => write!(f, "{}", with_port),
-            HostPort::DefaultPort { host, port, .. } => write!(f, "{}:{}", host, port),
+            HostPort::Shared { host, port, .. } => write!(f, "{}:{}", host, port),
+            HostPort::Owned { host, port, .. } => write!(f, "{}:{}", host, port),
         }
+    }
+}
+
+impl<'a> std::cmp::PartialEq<HostPort<'a>> for HostPort<'a> {
+    fn eq(&self, other: &HostPort<'a>) -> bool {
+        self.host() == other.host() && self.port() == other.port()
     }
 }
 

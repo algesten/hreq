@@ -498,7 +498,9 @@ impl Body {
 
         // TODO sniff charset from html pages like
         // <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
-        if !is_response && req_params.charset_encode || is_response && req_params.charset_decode {
+        if !is_response && self.req_params.charset_encode
+            || is_response && self.req_params.charset_decode
+        {
             self.configure_charset_codec(headers, is_response);
         }
     }
@@ -542,6 +544,11 @@ impl Body {
             (from, charset)
         };
         self.char_codec = Some(CharCodec::new(from, to));
+        trace!(
+            "Charset codec ({}): {:?}",
+            if is_response { "response" } else { "request" },
+            self.char_codec
+        );
         None
     }
 

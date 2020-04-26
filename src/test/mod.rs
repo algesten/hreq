@@ -1,4 +1,6 @@
-use crate::prelude::*;
+use crate::reqb_ext::RequestParams;
+use crate::uri_ext::HostPort;
+use crate::Agent;
 use crate::AsyncRead;
 use crate::AsyncRuntime;
 use crate::Body;
@@ -11,12 +13,14 @@ use std::future::Future;
 use std::io;
 use std::net;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
 use tide;
 
 mod basic;
 mod charset;
+mod cookie;
 mod get;
 mod gzip;
 mod json;
@@ -44,6 +48,22 @@ where
     Acc: (FnOnce(tide::Request<()>) -> Fut) + Send + 'static,
     Fut: Future<Output = tide::Request<()>> + Send + 'a,
 {
+    let mut agent = Agent::new();
+    run_agent(&mut agent, req, res, accept_req)
+}
+
+#[allow(clippy::type_complexity)]
+pub fn run_agent<'a, Res, Acc, Fut>(
+    agent: &mut Agent,
+    mut req: http::Request<Body>,
+    res: Res,
+    accept_req: Acc,
+) -> Result<(http::Request<()>, http::Response<()>, Vec<u8>), Error>
+where
+    Res: tide::IntoResponse + 'static,
+    Acc: (FnOnce(tide::Request<()>) -> Fut) + Send + 'static,
+    Fut: Future<Output = tide::Request<()>> + Send + 'a,
+{
     test_setup();
     AsyncRuntime::current().block_on(async {
         // channel where we "leak" the server request from tide
@@ -59,11 +79,13 @@ where
         let mut app = tide::new();
         app.at("/*path").all(move |req: tide::Request<()>| {
             let txsreq = txsreq.clone();
-            let accept_req = accept_req_once.lock().unwrap().take().unwrap();
+            let accept_req = accept_req_once.lock().unwrap().take();
             let res = res_mut.lock().unwrap().take();
             async move {
-                let req = accept_req(req).await;
-                txsreq.send(req).await;
+                if let Some(accept_req) = accept_req {
+                    let req = accept_req(req).await;
+                    txsreq.send(req).await;
+                }
                 if let Some(res) = res {
                     res
                 } else {
@@ -72,12 +94,15 @@ where
             }
         });
 
-        let (hostport, test_uri) = random_test_uri(req.uri());
+        let (host, port, hostport) = random_test_hostport();
 
-        // Rewrite the incoming request to use the port.
-        let (mut parts, body) = req.into_parts();
-        parts.uri = test_uri;
-        let req = http::Request::from_parts(parts, body);
+        // Override the incoming request to use locahost + port.
+        let ext = req.extensions_mut();
+        if ext.get::<RequestParams>().is_none() {
+            ext.insert(RequestParams::new());
+        }
+        let params = ext.get_mut::<RequestParams>().unwrap();
+        params.with_override = Some(Arc::new(HostPort::new(host, port, false)));
 
         // Run the server app in a select! that ends when we send the end signal.
         {
@@ -112,7 +137,7 @@ where
         rxstart.recv().await.expect("rxstart.recv()")?;
 
         // Send request and wait for the client response.
-        let client_res = req.send().await?;
+        let client_res = agent.send(req).await?;
 
         // Wait for the server request to "leak out" of the server app.
         let tide_server_req = rxsreq.recv().await.expect("Wait for server request");
@@ -133,25 +158,14 @@ where
 }
 
 /// Generate a random hos:port and uri pair
-fn random_test_uri(uri: &http::Uri) -> (String, http::Uri) {
+fn random_test_hostport() -> (&'static str, u16, String) {
     // TODO There's no guarantee this port will be free by the time we do app.listen()
     // this could lead to random test failures. If tide provided some way of binding :0
     // and returning the port bound would be the best.
     let port = random_local_port();
-    let hostport = format!("127.0.0.1:{}", port);
-    let pq = uri
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .expect("Test bad pq");
-
-    // This is the request uri for the test
-    let test_uri_s = format!("http://{}{}", hostport, pq);
-    let test_uri = test_uri_s
-        .as_str()
-        .parse::<http::Uri>()
-        .expect("Test bad req uri");
-
-    (hostport, test_uri)
+    let host = "127.0.0.1";
+    let hostport = format!("{}:{}", host, port);
+    (host, port, hostport)
 }
 
 /// there's no guarantee this port wil be available when we want to (re-)use it

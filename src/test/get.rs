@@ -9,7 +9,7 @@ test_h1_h2! {
     fn sane_headers() -> Result<(), Error> {
         |bld: http::request::Builder| {
             let req = bld
-                .uri("/path")
+                .uri("https://my-fine-host.com/path")
                 .body(().into())?;
             let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
                 async move { tide_req }
@@ -22,7 +22,7 @@ test_h1_h2! {
             if server_req.version() == http::Version::HTTP_2 {
                 // :authority and :scheme seems to never make it through.
             } else {
-                assert_eq!(server_req.header("host"), Some("127.0.0.1"));
+                assert_eq!(server_req.header("host"), Some("my-fine-host.com"));
             }
             Ok(())
         }

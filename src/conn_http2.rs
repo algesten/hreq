@@ -15,7 +15,7 @@ pub async fn send_request_http2(
     unfinished_recs: Arc<()>,
 ) -> Result<http::Response<Body>, Error> {
     //
-    let params = *req.extensions().get::<RequestParams>().unwrap();
+    let params = req.extensions().get::<RequestParams>().unwrap().clone();
 
     let mut h2 = send_req.ready().await?;
 
@@ -72,7 +72,7 @@ pub async fn send_request_http2(
     trace!("Got Http2 response: {:?}", res);
 
     let (mut parts, res_body) = res.into_parts();
-    parts.extensions.insert(params);
+    parts.extensions.insert(params.clone());
 
     let mut res_body = Body::new(BodyImpl::Http2(res_body), None, Some(unfinished_recs));
     res_body.configure(params, &parts.headers, true);

@@ -375,15 +375,17 @@ use crate::conn::Connection;
 use crate::conn::ProtocolImpl;
 use crate::proto::Protocol;
 use crate::tokio::to_tokio;
-use crate::uri_ext::UriExt;
+use crate::uri_ext::HostPort;
 
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl Stream for Box<dyn Stream> {}
 
-pub(crate) async fn connect(uri: &http::Uri, force_http2: bool) -> Result<Connection, Error> {
-    let hostport = uri.host_port()?;
+pub(crate) async fn connect(
+    host_port: &HostPort<'_>,
+    force_http2: bool,
+) -> Result<Connection, Error> {
     // "host:port"
-    let addr = hostport.to_string();
+    let addr = host_port.to_string();
 
     let (stream, alpn_proto) = {
         // "raw" tcp
@@ -393,9 +395,9 @@ pub(crate) async fn connect(uri: &http::Uri, force_http2: bool) -> Result<Connec
         {
             use crate::either::Either;
             use crate::tls::wrap_tls;
-            if hostport.is_tls() {
+            if host_port.is_tls() {
                 // wrap in tls
-                let (tls, proto) = wrap_tls(tcp, hostport.host()).await?;
+                let (tls, proto) = wrap_tls(tcp, host_port.host()).await?;
                 (Either::A(tls), proto)
             } else {
                 // use tcp
@@ -413,11 +415,11 @@ pub(crate) async fn connect(uri: &http::Uri, force_http2: bool) -> Result<Connec
         alpn_proto
     };
 
-    open_stream(addr, stream, proto).await
+    open_stream(host_port.to_owned(), stream, proto).await
 }
 
 pub(crate) async fn open_stream(
-    addr: String,
+    host_port: HostPort<'static>,
     stream: impl Stream,
     proto: Protocol,
 ) -> Result<Connection, Error> {
@@ -430,7 +432,7 @@ pub(crate) async fn open_stream(
                 trace!("Error in connection: {:?}", err);
             }
         });
-        Ok(Connection::new(addr, ProtocolImpl::Http2(h2)))
+        Ok(Connection::new(host_port, ProtocolImpl::Http2(h2)))
     } else {
         let (h1, h1conn) = h1::handshake(stream);
         // drives the connection independently of the h1 api surface
@@ -440,6 +442,6 @@ pub(crate) async fn open_stream(
                 trace!("Error in connection: {:?}", err);
             }
         });
-        Ok(Connection::new(addr, ProtocolImpl::Http1(h1)))
+        Ok(Connection::new(host_port, ProtocolImpl::Http1(h1)))
     }
 }

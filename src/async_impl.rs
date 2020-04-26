@@ -3,12 +3,11 @@
 use crate::Error;
 use crate::Stream;
 use futures_util::future::poll_fn;
+use once_cell::sync::Lazy;
 use std::future::Future;
 use std::sync::Mutex;
 use std::task::Poll;
 use std::time::Duration;
-
-use once_cell::sync::Lazy;
 
 #[cfg(feature = "tokio")]
 use tokio_lib::runtime::Runtime as TokioRuntime;

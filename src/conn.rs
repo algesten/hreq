@@ -3,6 +3,7 @@ use crate::conn_http2::send_request_http2;
 use crate::h1::SendRequest as H1SendRequest;
 use crate::reqb_ext::RequestParams;
 use crate::res_ext::HeaderMapExt;
+use crate::uri_ext::HostPort;
 use crate::uri_ext::MethodExt;
 use crate::Body;
 use crate::Error;
@@ -33,7 +34,7 @@ impl fmt::Display for ProtocolImpl {
 // #[derive(Clone)]
 pub struct Connection {
     id: usize,
-    addr: String,
+    host_port: HostPort<'static>,
     p: ProtocolImpl,
     unfinished_reqs: Arc<()>,
 }
@@ -46,10 +47,10 @@ impl PartialEq for Connection {
 impl Eq for Connection {}
 
 impl Connection {
-    pub(crate) fn new(addr: String, p: ProtocolImpl) -> Self {
+    pub(crate) fn new(host_port: HostPort<'static>, p: ProtocolImpl) -> Self {
         Connection {
             id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
-            addr,
+            host_port,
             p,
             unfinished_reqs: Arc::new(()),
         }
@@ -59,8 +60,8 @@ impl Connection {
         self.id
     }
 
-    pub(crate) fn addr(&self) -> &str {
-        &self.addr
+    pub(crate) fn host_port(&self) -> &HostPort<'static> {
+        &self.host_port
     }
 
     pub(crate) fn is_http2(&self) -> bool {
@@ -83,11 +84,11 @@ impl Connection {
 
         let (mut parts, mut body) = req.into_parts();
 
-        let params = *parts.extensions.get::<RequestParams>().unwrap();
+        let params = parts.extensions.get::<RequestParams>().unwrap();
         let deadline = params.deadline();
 
         // resolve deferred body codecs because content-encoding and content-type are settled.
-        body.configure(params, &parts.headers, false);
+        body.configure(params.clone(), &parts.headers, false);
 
         if let Some(len) = body.content_encoded_length() {
             // the body indicates a length (for sure).
@@ -126,7 +127,7 @@ impl Connection {
 
         let req = http::Request::from_parts(parts, body);
 
-        trace!("{} {} {} {}", self.p, self.addr, req.method(), req.uri());
+        trace!("{} {} {} {}", self.p, self.host_port(), req.method(), req.uri());
 
         match &mut self.p {
             ProtocolImpl::Http1(send_req) => {

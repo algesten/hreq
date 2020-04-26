@@ -4,7 +4,7 @@ use crate::async_impl::AsyncRuntime;
 use crate::connect;
 use crate::cookies::Cookies;
 use crate::reqb_ext::resolve_hreq_ext;
-use crate::reqb_ext::RequestParams;
+use crate::reqb_ext::{QueryParams, RequestParams};
 use crate::uri_ext::UriExt;
 use crate::Body;
 use crate::Connection;
@@ -160,29 +160,18 @@ impl Agent {
         if !self.pooling {
             return Ok(None);
         }
-        let hostport = uri.host_port()?;
-        let addr = hostport.to_string();
+        let host_port = uri.host_port()?;
         let ret = self
             .connections
             .iter_mut()
             // http2 multiplexes over the same connection, http1 needs to finish previous req
-            .find(|c| c.addr() == addr && (c.is_http2() || c.unfinished_requests() == 0));
+            .find(|c| {
+                c.host_port() == &host_port && (c.is_http2() || c.unfinished_requests() == 0)
+            });
         if ret.is_some() {
             trace!("Reuse from pool: {}", uri);
         }
         Ok(ret)
-    }
-
-    async fn connect_and_pool(
-        &mut self,
-        uri: &http::Uri,
-        force_http2: bool,
-    ) -> Result<&mut Connection, Error> {
-        trace!("Connect new: {}", uri);
-        let conn = connect(uri, force_http2).await?;
-        self.connections.push(conn);
-        let idx = self.connections.len() - 1;
-        Ok(self.connections.get_mut(idx).unwrap())
     }
 
     /// Sends a request using this agent.
@@ -212,7 +201,7 @@ impl Agent {
         // apply the parameters held in a separate storage
         let req = resolve_hreq_ext(req);
 
-        let params = *req.extensions().get::<RequestParams>().unwrap();
+        let params = req.extensions().get::<RequestParams>().unwrap().clone();
 
         // the request should be time limited regardless of retries. the entire do_send()
         // is wrapped in a ticking timer...
@@ -243,6 +232,11 @@ impl Agent {
         let mut unpooled: Option<Connection> = None;
         let use_cookies = self.use_cookies;
 
+        // if we have a param.with_override, whenever we are to open a connection,
+        // we check whether the current uri has an equal hostport to this, that
+        // way we can override also subsequent requests for the original uri.
+        let orig_hostport = req.uri().host_port()?.to_owned();
+
         let mut next_req = req;
 
         loop {
@@ -272,10 +266,33 @@ impl Agent {
             let conn = match self.reuse_from_pool(&uri)? {
                 Some(conn) => conn,
                 None => {
+                    let hostport_uri = uri.host_port()?;
+                    let mut conn: Option<Connection> = None;
+
+                    // if the current request is for the same uri (hostport part) as
+                    // the original uri, we will use the override.
+                    if orig_hostport == hostport_uri {
+                        if let Some(arc) = params.with_override.clone() {
+                            let hostport = &*arc;
+                            trace!("Connect new: {} with override: {}", uri, hostport);
+                            conn = Some(connect(&hostport, params.force_http2).await?);
+                        }
+                    }
+
+                    // no override for this connection.
+                    let conn = match conn {
+                        Some(conn) => conn,
+                        None => {
+                            trace!("Connect new: {}", hostport_uri);
+                            connect(&hostport_uri, params.force_http2).await?
+                        }
+                    };
+
                     if pooling {
-                        self.connect_and_pool(&uri, params.force_http2).await?
+                        self.connections.push(conn);
+                        let idx = self.connections.len() - 1;
+                        self.connections.get_mut(idx).unwrap()
                     } else {
-                        let conn = connect(&uri, params.force_http2).await?;
                         unpooled.replace(conn);
                         unpooled.as_mut().unwrap()
                     }
@@ -383,6 +400,9 @@ fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
 
     // there might be other extensions we're missing here.
     if let Some(params) = from.extensions().get::<RequestParams>() {
+        parts.extensions.insert(params.clone());
+    }
+    if let Some(params) = from.extensions().get::<QueryParams>() {
         parts.extensions.insert(params.clone());
     }
 

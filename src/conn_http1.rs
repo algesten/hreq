@@ -13,7 +13,7 @@ pub async fn send_request_http1(
     unfinished_recs: Arc<()>,
 ) -> Result<http::Response<Body>, Error> {
     //
-    let params = *req.extensions().get::<RequestParams>().unwrap();
+    let params = req.extensions().get::<RequestParams>().unwrap().clone();
 
     let mut h1 = send_req; // .ready().await?;
 
@@ -40,7 +40,7 @@ pub async fn send_request_http1(
     }
 
     let (mut parts, res_body) = fut_res.await?.into_parts();
-    parts.extensions.insert(params);
+    parts.extensions.insert(params.clone());
 
     let mut res_body = Body::new(BodyImpl::Http1(res_body), None, Some(unfinished_recs));
     res_body.configure(params, &parts.headers, true);

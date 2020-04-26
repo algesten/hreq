@@ -2,18 +2,17 @@
 
 use crate::deadline::Deadline;
 use crate::req_ext::RequestExt;
+use crate::uri_ext::HostPort;
 use crate::Body;
 use crate::Error;
 use async_trait::async_trait;
+use encoding_rs::Encoding;
 use http::request;
 use http::Uri;
 use http::{Request, Response};
-use once_cell::sync::Lazy;
 use qstring::QString;
 use serde::Serialize;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Extends [`http::request::Builder`] with ergonomic extras for hreq.
@@ -290,6 +289,22 @@ where
     /// ```
     fn content_decode(self, enabled: bool) -> Self;
 
+    /// Override the host, port and TLS setting of where to connect to.
+    ///
+    /// This is mostly used for testing.
+    ///
+    /// With this, hreq will ignore the scheme, host and port provided
+    /// in the [`Uri`] when opening the TCP connection. The rest of the request
+    /// handling will still use the [`Uri`] (cookies etc).
+    ///
+    /// The override is only used for connections to the host/port found in [`Uri`],
+    /// and not when following redirects to other host/ports.
+    ///
+    /// The override host name is also used for TLS certificate matching.
+    ///
+    /// [`Uri`]: https://docs.rs/http/latest/http/uri/struct.Uri.html
+    fn with_override(self, host: &str, port: u16, tls: bool) -> Self;
+
     /// Finish building the request by providing something as [`Body`].
     ///
     /// [`Body`] implements a number of conventient `From` traits. We can trivially construct
@@ -426,14 +441,15 @@ where
 impl RequestBuilderExt for request::Builder {
     //
     fn query(self, key: &str, value: &str) -> Self {
-        with_builder_store(self, |store| {
-            store.query_params.push((key.into(), value.into()));
-        })
+        let mut this = self;
+        let qparams = get_or_insert(&mut this, QueryParams::new);
+        qparams.params.push((key.into(), value.into()));
+        this
     }
 
     fn timeout(self, duration: Duration) -> Self {
-        with_builder_store(self, |store| {
-            store.req_params.timeout = Some(duration);
+        with_request_params(self, |params| {
+            params.timeout = Some(duration);
         })
     }
 
@@ -442,52 +458,58 @@ impl RequestBuilderExt for request::Builder {
     }
 
     fn force_http2(self, enabled: bool) -> Self {
-        with_builder_store(self, |store| {
-            store.req_params.force_http2 = enabled;
+        with_request_params(self, |params| {
+            params.force_http2 = enabled;
         })
     }
 
     fn charset_encode(self, enable: bool) -> Self {
-        with_builder_store(self, |store| {
-            store.req_params.charset_encode = enable;
+        with_request_params(self, |params| {
+            params.charset_encode = enable;
         })
     }
 
     fn charset_encode_source(self, encoding: &str) -> Self {
-        with_builder_store(self, |store| {
+        with_request_params(self, |params| {
             let enc = Encoding::for_label(encoding.as_bytes());
             if enc.is_none() {
                 warn!("Unknown character encoding: {}", encoding);
             }
-            store.req_params.charset_encode_source = enc;
+            params.charset_encode_source = enc;
         })
     }
 
     fn charset_decode(self, enable: bool) -> Self {
-        with_builder_store(self, |store| {
-            store.req_params.charset_decode = enable;
+        with_request_params(self, |params| {
+            params.charset_decode = enable;
         })
     }
 
     fn charset_decode_target(self, encoding: &str) -> Self {
-        with_builder_store(self, |store| {
+        with_request_params(self, |params| {
             let enc = Encoding::for_label(encoding.as_bytes());
             if enc.is_none() {
                 warn!("Unknown character encoding: {}", encoding);
             }
-            store.req_params.charset_decode_target = enc;
+            params.charset_decode_target = enc;
         })
     }
 
     fn content_encode(self, enable: bool) -> Self {
-        with_builder_store(self, |store| {
-            store.req_params.content_encode = enable;
+        with_request_params(self, |params| {
+            params.content_encode = enable;
         })
     }
 
     fn content_decode(self, enable: bool) -> Self {
-        with_builder_store(self, |store| {
-            store.req_params.content_decode = enable;
+        with_request_params(self, |params| {
+            params.content_decode = enable;
+        })
+    }
+
+    fn with_override(self, host: &str, port: u16, tls: bool) -> Self {
+        with_request_params(self, |params| {
+            params.with_override = Some(Arc::new(HostPort::new(host, port, tls)));
         })
     }
 
@@ -521,28 +543,7 @@ impl RequestBuilderExt for request::Builder {
     }
 }
 
-const HREQ_EXT_HEADER: &str = "x-hreq-ext";
-static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
-static BUILDER_STORE: Lazy<Mutex<HashMap<usize, BuilderStore>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
-struct BuilderStore {
-    query_params: Vec<(String, String)>,
-    req_params: RequestParams,
-}
-
-/// Extra parameters associated with the request being built.
-///
-/// In the request we keep a header `x-hreq-ext` with a unique number. That number corresponds
-/// to a `BuilderStore` in a shared storage. Upon executing the request, we apply the extra
-/// parameters to the request before anything else.
-///
-/// TODO: Avoid leaking memory for requests that are never sent by using an Arc<BuilderStore>
-/// as extension in the Builder together with a Weak<BuilderStore> in the shared Mutex + cleanup.
-///
-/// TODO: Simplify this by asking the http API guys if we can have a `extensions_mut()`
-/// accessor in the Builder.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct RequestParams {
     pub req_start: Option<Instant>,
     pub timeout: Option<Duration>,
@@ -553,9 +554,8 @@ pub struct RequestParams {
     pub charset_decode_target: Option<&'static Encoding>,
     pub content_encode: bool,
     pub content_decode: bool,
+    pub with_override: Option<Arc<HostPort<'static>>>,
 }
-
-use encoding_rs::Encoding;
 
 impl RequestParams {
     pub fn new() -> Self {
@@ -579,80 +579,80 @@ impl RequestParams {
     }
 }
 
-impl BuilderStore {
+fn get_or_insert<T: Send + Sync + 'static, F: FnOnce() -> T>(
+    builder: &mut request::Builder,
+    f: F,
+) -> &mut T {
+    let ext = builder.extensions_mut().expect("Unwrap extensions");
+    if ext.get::<T>().is_none() {
+        ext.insert(f());
+    }
+    ext.get_mut::<T>().unwrap()
+}
+
+fn with_request_params<F: FnOnce(&mut RequestParams)>(
+    mut builder: request::Builder,
+    f: F,
+) -> request::Builder {
+    let params = get_or_insert(&mut builder, RequestParams::new);
+    f(params);
+    builder
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct QueryParams {
+    pub params: Vec<(String, String)>,
+}
+
+impl QueryParams {
     fn new() -> Self {
-        BuilderStore {
-            query_params: vec![],
-            req_params: RequestParams::new(),
+        QueryParams {
+            ..Default::default()
         }
     }
 
-    fn invoke(self, parts: &mut http::request::Parts) -> RequestParams {
+    fn apply(self, parts: &mut http::request::Parts) {
         let mut uri_parts = parts.uri.clone().into_parts();
 
         // Construct new instance of PathAndQuery with our modified query.
-        if !self.query_params.is_empty() {
-            let new_path_and_query = {
-                //
-                let (path, query) = uri_parts
-                    .path_and_query
-                    .as_ref()
-                    .map(|p| (p.path(), p.query().unwrap_or("")))
-                    .unwrap_or(("", ""));
+        let new_path_and_query = {
+            //
+            let (path, query) = uri_parts
+                .path_and_query
+                .as_ref()
+                .map(|p| (p.path(), p.query().unwrap_or("")))
+                .unwrap_or(("", ""));
 
-                let mut qs = QString::from(query);
-                for (key, value) in self.query_params.into_iter() {
-                    qs.add_pair((key, value));
-                }
+            let mut qs = QString::from(query);
+            for (key, value) in self.params.into_iter() {
+                qs.add_pair((key, value));
+            }
 
-                // PathAndQuery has no API for modifying any fields. This seems to be our only
-                // option to get a new instance of it using the public API.
-                let tmp: Uri = format!("http://fake{}?{}", path, qs).parse().unwrap();
-                let tmp_parts = tmp.into_parts();
-                tmp_parts.path_and_query.unwrap()
-            };
+            // PathAndQuery has no API for modifying any fields. This seems to be our only
+            // option to get a new instance of it using the public API.
+            let tmp: Uri = format!("http://fake{}?{}", path, qs).parse().unwrap();
+            let tmp_parts = tmp.into_parts();
+            tmp_parts.path_and_query.unwrap()
+        };
 
-            // This is good. We can change the PathAndQuery field.
-            uri_parts.path_and_query = Some(new_path_and_query);
+        // This is good. We can change the PathAndQuery field.
+        uri_parts.path_and_query = Some(new_path_and_query);
 
-            let new_uri = Uri::from_parts(uri_parts).unwrap();
-            parts.uri = new_uri;
-        }
-
-        self.req_params
+        let new_uri = Uri::from_parts(uri_parts).unwrap();
+        parts.uri = new_uri;
     }
-}
-
-fn with_builder_store<F: FnOnce(&mut BuilderStore)>(
-    mut builder: http::request::Builder,
-    f: F,
-) -> http::request::Builder {
-    if let Some(headers) = builder.headers_mut() {
-        let val = headers
-            .entry(HREQ_EXT_HEADER)
-            .or_insert_with(|| ID_COUNTER.fetch_add(1, Ordering::Relaxed).into());
-        let id = val.to_str().unwrap().parse::<usize>().unwrap();
-        let mut lock = BUILDER_STORE.lock().unwrap();
-        let hreq_ext = lock.entry(id).or_insert_with(BuilderStore::new);
-        f(hreq_ext);
-    }
-    builder
 }
 
 /// Apply the parameters held in the separate storage.
 pub fn resolve_hreq_ext(req: http::request::Request<Body>) -> http::request::Request<Body> {
     let (mut parts, body) = req.into_parts();
-    let mut req_params = None;
-    if let Some(val) = parts.headers.remove(HREQ_EXT_HEADER) {
-        let id = val.to_str().unwrap().parse::<usize>().unwrap();
-        let mut lock = BUILDER_STORE.lock().unwrap();
-        if let Some(store) = lock.remove(&id) {
-            req_params = Some(store.invoke(&mut parts))
-        }
+    if let Some(query_params) = parts.extensions.remove::<QueryParams>() {
+        query_params.apply(&mut parts);
     }
-    let mut req_params = req_params.unwrap_or_else(RequestParams::new);
+    if parts.extensions.get::<RequestParams>().is_none() {
+        parts.extensions.insert(RequestParams::new());
+    }
+    let req_params = parts.extensions.get_mut::<RequestParams>().unwrap();
     req_params.mark_request_start();
-    // after this we get the request parameters from the req.extensions()
-    parts.extensions.insert(req_params);
     http::Request::from_parts(parts, body)
 }
