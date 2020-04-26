@@ -27,7 +27,7 @@ use std::time::Duration;
 ///   * Redirects: 5
 ///   * Retries: 5
 ///   * Connection pooling: on
-///   * Cookies: on (TODO)
+///   * Cookies: on
 ///
 /// The settings can be changed, and are used for the next `.send()` call. It is possible
 /// to change the settings between calls.
