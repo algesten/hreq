@@ -248,9 +248,13 @@ impl Agent {
                 if let Some(cookies) = cookies {
                     let cookies = cookies.get(&uri);
                     for cookie in cookies {
-                        let cval = cookie.encoded().to_string();
+                        // TODO this is a bit inefficient, the .encoded() returns
+                        // the full cookie including ;HttpOnly etc.
+                        let no_param = Cookie::new(cookie.name(), cookie.value());
+                        let cval = no_param.encoded().to_string();
                         let val = http::header::HeaderValue::from_str(&cval)
                             .expect("Cookie header value");
+                        // TODO combine multiple cookies into less headers.
                         req.headers_mut().append("cookie", val);
                     }
                 }

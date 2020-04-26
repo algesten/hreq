@@ -352,6 +352,7 @@ pub use crate::error::Error;
 pub use crate::req_ext::RequestExt;
 pub use crate::reqb_ext::RequestBuilderExt;
 pub use crate::res_ext::ResponseExt;
+pub use cookie::Cookie;
 pub use http;
 
 pub mod prelude {
