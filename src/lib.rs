@@ -306,17 +306,17 @@
 //! * Cookies
 //!
 //! [http crate]: https://crates.io/crates/http
-//! [`rt-core`]: https://docs.rs/tokio/0.2.18/tokio/runtime/index.html#basic-scheduler
+//! [`rt-core`]: https://docs.rs/tokio/latest/tokio/runtime/index.html#basic-scheduler
 //! [`TcpStream`]: https://doc.rust-lang.org/std/net/struct.TcpStream.html
-//! [`Handle`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Handle.html
-//! [`Runtime`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Runtime.html
-//! [`AsyncRuntime`]: enum.AsyncRuntime.html
-//! [`Agent`]: struct.Agent.html
+//! [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
+//! [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
+//! [`AsyncRuntime`]: https://docs.rs/hreq/latest/hreq/enum.AsyncRuntime.html
+//! [`Agent`]: https://docs.rs/hreq/latest/hreq/struct.Agent.html
 //! [Expect-100]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/100
-//! [`content_encode`]: trait.RequestBuilderExt.html#tymethod.content_encode
-//! [`content_decode`]: trait.RequestBuilderExt.html#tymethod.content_decode
-//! [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
-//! [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
+//! [`content_encode`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.content_encode
+//! [`content_decode`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.content_decode
+//! [`charset_encode_source`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_encode_source
+//! [`charset_decode_target`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_decode_target
 //! [serde]: https://crates.io/crates/serde
 #[macro_use]
 extern crate log;

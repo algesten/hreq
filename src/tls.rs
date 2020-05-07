@@ -91,7 +91,7 @@ impl<S: Stream> TlsStream<S> {
     /// read to end we create a fake io::Error that passes through rustls and we can capture
     /// on the "other side".
     ///
-    /// [`complete_io`]: https://docs.rs/rustls/0.16.0/rustls/trait.Session.html#method.complete_io
+    /// [`complete_io`]: https://docs.rs/rustls/latest/rustls/trait.Session.html#method.complete_io
     #[allow(clippy::useless_let_if_seq)]
     fn poll_tls(&mut self, cx: &mut Context, poll_for_read: bool) -> Poll<io::Result<()>> {
         loop {

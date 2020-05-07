@@ -72,8 +72,8 @@ pub(crate) struct TokioRuntime;
 /// ```
 ///
 ///
-/// [`Handle`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Handle.html
-/// [`Runtime`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Runtime.html
+/// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
+/// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
 #[derive(Debug)]
 pub enum AsyncRuntime {
     #[cfg(feature = "async-std")]

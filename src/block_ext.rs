@@ -65,9 +65,9 @@ use std::future::Future;
 /// [`AsyncRuntime`]: enum.AsyncRuntime.html
 /// [`TokioDefault`]: enum.AsyncRuntime.html#variant.TokioDefault
 /// [`TokioShared`]: enum.AsyncRuntime.html#variant.TokioShared
-/// [`Runtime`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Runtime.html
-/// [`Handle`]: https://docs.rs/tokio/0.2.11/tokio/runtime/struct.Handle.html
-/// [`block_on`]: https://docs.rs/async-std/1.4.0/async_std/task/fn.block_on.html
+/// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
+/// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
+/// [`block_on`]: https://docs.rs/async-std/latest/async_std/task/fn.block_on.html
 pub trait BlockExt {
     fn block(self) -> Self::Output
     where

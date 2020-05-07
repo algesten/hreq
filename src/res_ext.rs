@@ -5,7 +5,7 @@ use std::str::FromStr;
 ///
 /// These extensions are part of the primary goal of hreq to provide a "User first API".
 ///
-/// [`http::request::Response`]: https://docs.rs/http/0.2.0/http/request/struct.Response.html
+/// [`http::request::Response`]: https://docs.rs/http/latest/http/request/struct.Response.html
 pub trait ResponseExt {
     /// Quickly read a header value as a `&str`.
     ///
