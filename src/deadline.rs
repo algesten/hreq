@@ -41,7 +41,7 @@ impl Deadline {
         let fut = async move {
             if let Some(delay) = delay {
                 if delay > ZERO {
-                    AsyncRuntime::current().timeout(delay).await;
+                    AsyncRuntime::timeout(delay).await;
                 }
             } else {
                 // never completes

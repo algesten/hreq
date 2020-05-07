@@ -127,7 +127,13 @@ impl Connection {
 
         let req = http::Request::from_parts(parts, body);
 
-        trace!("{} {} {} {}", self.p, self.host_port(), req.method(), req.uri());
+        trace!(
+            "{} {} {} {}",
+            self.p,
+            self.host_port(),
+            req.method(),
+            req.uri()
+        );
 
         match &mut self.p {
             ProtocolImpl::Http1(send_req) => {

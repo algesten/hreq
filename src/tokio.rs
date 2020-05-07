@@ -7,6 +7,7 @@ use std::task::{Context, Poll};
 
 use tokio_traits::{TokioAsyncRead, TokioAsyncWrite};
 
+#[cfg(feature = "tokio")]
 pub(crate) fn from_tokio<Z>(adapted: Z) -> impl Stream
 where
     Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static,

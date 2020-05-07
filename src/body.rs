@@ -4,7 +4,6 @@ use crate::charset::CharCodec;
 use crate::h1::RecvStream as H1RecvStream;
 use crate::reqb_ext::RequestParams;
 use crate::res_ext::HeaderMapExt;
-use crate::tokio;
 use crate::AsyncRead;
 use crate::Error;
 use bytes::Bytes;
@@ -16,15 +15,12 @@ use h2::RecvStream as H2RecvStream;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt;
-use std::fs;
 use std::future::Future;
 use std::io;
 use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-
-use tokio_lib::fs::File;
 
 #[cfg(feature = "gzip")]
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
@@ -350,10 +346,11 @@ impl Body {
     /// Request::post("https://post-to-here")
     ///     .send(File::open("myfile.txt").unwrap()).block().unwrap();
     /// ```
-    pub fn from_file(file: fs::File) -> Self {
+    #[cfg(feature = "tokio")]
+    pub fn from_file(file: std::fs::File) -> Self {
         let len = file.metadata().ok().map(|m| m.len());
-        let async_file = File::from_std(file);
-        Body::from_async_read(tokio::from_tokio(async_file), len)
+        let async_file = tokio_lib::fs::File::from_std(file);
+        Body::from_async_read(crate::tokio::from_tokio(async_file), len)
     }
 
     /// Creates a body from a JSON encodable type.
@@ -909,8 +906,9 @@ impl<'a> From<&'a Vec<u8>> for Body {
     }
 }
 
-impl From<fs::File> for Body {
-    fn from(file: fs::File) -> Self {
+#[cfg(feature = "tokio")]
+impl From<std::fs::File> for Body {
+    fn from(file: std::fs::File) -> Self {
         Body::from_file(file)
     }
 }

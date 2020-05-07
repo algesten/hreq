@@ -76,6 +76,6 @@ pub trait BlockExt {
 
 impl<F: Future> BlockExt for F {
     fn block(self) -> F::Output {
-        AsyncRuntime::current().block_on(self)
+        AsyncRuntime::block_on(self)
     }
 }

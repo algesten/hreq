@@ -34,7 +34,7 @@ mod timeout;
 pub fn test_setup() {
     simplelog::set_logger();
     // We're using async-std for the tests because that's what tide uses.
-    AsyncRuntime::set_default(AsyncRuntime::AsyncStd, None);
+    AsyncRuntime::AsyncStd.make_default();
 }
 
 #[allow(clippy::type_complexity)]
@@ -65,7 +65,7 @@ where
     Fut: Future<Output = tide::Request<()>> + Send + 'a,
 {
     test_setup();
-    AsyncRuntime::current().block_on(async {
+    AsyncRuntime::block_on(async {
         // channel where we "leak" the server request from tide
         let (txsreq, rxsreq) = channel(1);
         // channel where send a message when we know the server is up
@@ -107,7 +107,7 @@ where
         // Run the server app in a select! that ends when we send the end signal.
         {
             let hostport = hostport.clone();
-            AsyncRuntime::current().spawn(async move {
+            AsyncRuntime::spawn(async move {
                 let req = select! {
                     a = app.listen(&hostport).fuse() => a.map_err(|e| Error::Io(e)),
                     b = rxend.recv().fuse() => Ok(()),
@@ -117,9 +117,9 @@ where
         }
 
         // loop until a tcp connection can connect to the server
-        AsyncRuntime::current().spawn(async move {
+        AsyncRuntime::spawn(async move {
             let ret = loop {
-                match AsyncRuntime::current().connect_tcp(&hostport).await {
+                match AsyncRuntime::connect_tcp(&hostport).await {
                     Ok(_) => break Ok(()),
                     Err(e) => match e.into_io() {
                         Some(ioe) => match ioe.kind() {

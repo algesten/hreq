@@ -380,9 +380,7 @@ impl Agent {
             }
             // retry backoff
             trace!("Retry backoff: {}ms", backoff_millis);
-            AsyncRuntime::current()
-                .timeout(Duration::from_millis(backoff_millis))
-                .await;
+            AsyncRuntime::timeout(Duration::from_millis(backoff_millis)).await;
             backoff_millis = (backoff_millis * 2).min(10_000);
         }
     }

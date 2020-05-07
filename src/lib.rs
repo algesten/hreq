@@ -391,7 +391,7 @@ pub(crate) async fn connect(
 
     let (stream, alpn_proto) = {
         // "raw" tcp
-        let tcp = AsyncRuntime::current().connect_tcp(&addr).await?;
+        let tcp = AsyncRuntime::connect_tcp(&addr).await?;
 
         #[cfg(feature = "tls")]
         {
@@ -428,7 +428,7 @@ pub(crate) async fn open_stream(
     if proto == Protocol::Http2 {
         let (h2, h2conn) = h2::client::handshake(to_tokio(stream)).await?;
         // drives the connection independently of the h2 api surface.
-        AsyncRuntime::current().spawn(async {
+        AsyncRuntime::spawn(async {
             if let Err(err) = h2conn.await {
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);
@@ -438,7 +438,7 @@ pub(crate) async fn open_stream(
     } else {
         let (h1, h1conn) = h1::handshake(stream);
         // drives the connection independently of the h1 api surface
-        AsyncRuntime::current().spawn(async {
+        AsyncRuntime::spawn(async {
             if let Err(err) = h1conn.await {
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);

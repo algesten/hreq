@@ -99,7 +99,6 @@ fn cookie_with_different_path() -> Result<(), Error> {
     Ok(())
 }
 
-
 #[test]
 fn cookie_with_matching_path() -> Result<(), Error> {
     let mut agent = Agent::new();
@@ -122,4 +121,3 @@ fn cookie_with_matching_path() -> Result<(), Error> {
 
     Ok(())
 }
-
