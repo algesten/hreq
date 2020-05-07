@@ -8,4 +8,4 @@ edition = "2018"
 flate2 = "*"
 log = "*"
 once_cell = "*"
-publicsuffix = "*"
+publicsuffix = { version = "*", default-features = false }
