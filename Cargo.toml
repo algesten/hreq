@@ -1,7 +1,13 @@
 [package]
 name = "hreq"
-version = "1.0.0"
+version = "0.1.0"
 authors = ["Martin Algesten <martin@lookback.io>"]
+description = "hreq is a user first async http client"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/algesten/hreq"
+readme = "README.md"
+keywords = ["web", "request", "http", "rest", "client"]
+categories = ["web-programming::http-client"]
 edition = "2018"
 
 [features]
@@ -27,18 +33,18 @@ tls = [
 ]
 
 [dependencies]
-bytes = "*"
-cookie = { version = "*", features = ["percent-encode"] }
+bytes = "0.5"
+cookie = { version = "0.13", features = ["percent-encode"] }
 futures-io = { version = "0.3" }
 futures-util = { version = "0.3", features = ["io"] }
-h2 = "*"
-http = "*"
-httparse = "*"
-log = "*"
-once_cell = "*"
-qstring = "*"
-async-trait = "*"
-encoding_rs = "*"
+h2 = "0.2"
+http = "0.2"
+httparse = "1"
+log = "0.4"
+once_cell = "1"
+qstring = "0.7"
+async-trait = "0.1"
+encoding_rs = "0.8"
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 # We always need tokio asyncwrite/asyncread traits because h2 uses them.
@@ -49,18 +55,18 @@ psl = { path = "./psl" }
 time = "=0.2.9"
 
 ## async-std
-async-std-lib = { package = "async-std", version = "*", optional = true }
+async-std-lib = { package = "async-std", version = "1", optional = true }
 
 ## tokio
 tokio-lib = { package = "tokio", version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time", "fs"], optional = true }
 
 ## gzip
-async-compression = { version = "*", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
+async-compression = { version = "0.3", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
 
 ## tls
 rustls = { version = "0.17.0", default-features = false, features = [], optional = true }
-webpki = { version = "*", optional = true }
-webpki-roots = { version = "*", optional = true }
+webpki = { version = "0.21", optional = true }
+webpki-roots = { version = "0.19", optional = true }
 
 [dev-dependencies]
 serde_derive = "1"

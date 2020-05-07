@@ -1,6 +1,12 @@
 #![warn(clippy::all)]
 //! hreq is a user first async http client.
 //!
+//! ### Early days
+//! 
+//! This library needs road testing. Bug reports and PRs are very welcome!
+//!  
+//! ### Principles
+//! 
 //! The principles of this library are:
 //!
 //! * User first API built on the http crate.

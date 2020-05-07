@@ -2,6 +2,12 @@
 
 hreq is a user first async http client.
 
+#### Early days
+
+This library needs road testing. Bug reports and PRs are very welcome!
+
+#### Principles
+
 The principles of this library are:
 
 * User first API built on the http crate.
@@ -313,3 +319,5 @@ let body = Body::from_json(&json);
 [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
 [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
 [serde]: https://crates.io/crates/serde
+
+License: MIT/Apache-2.0
