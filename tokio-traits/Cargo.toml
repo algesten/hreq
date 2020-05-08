@@ -1,8 +1,12 @@
 [package]
-name = "tokio-traits"
-version = "0.1.0"
-authors = ["Martin Algesten <martin@algesten.se>"]
+name = "tokio-read-write-traits"
+version = "0.2.20"
+authors = ["Tokio Contributors <team@tokio.rs>"]
+description = "Re-export of tokio AsyncRead and AsyncWrite"
+license = "MIT"
+readme = "README.md"
 edition = "2018"
+repository = "https://github.com/tokio-rs/tokio"
 
 [dependencies]
-tokio = { package = "tokio", version = "0.2", default-features = false }
+tokio = { package = "tokio", version = "0.2.20", default-features = false }
