@@ -36,7 +36,7 @@ test-topsites = []
 [dependencies]
 bytes = "0.5"
 cookie = { version = "0.13", features = ["percent-encode"] }
-flate2 = "*"
+flate2 = "1"
 futures-io = { version = "0.3" }
 futures-util = { version = "0.3", features = ["io"] }
 h2 = "0.2"
@@ -47,7 +47,7 @@ once_cell = "1"
 qstring = "0.7"
 async-trait = "0.1"
 encoding_rs = "0.8"
-publicsuffix = { version = "*", default-features = false }
+publicsuffix = { version = "1", default-features = false }
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 # keep in sync with time brought in by cookie
@@ -73,7 +73,7 @@ pretty_env_logger = "0.4"
 env_logger = "0.7"
 serde_derive = "1"
 tide = "0.6"
-async-std-lib = { package = "async-std", version = "*", features = ["unstable"] }
+async-std-lib = { package = "async-std", version = "1", features = ["unstable"] }
 paste = "0.1"
 rand = "0.7"
 
