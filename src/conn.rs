@@ -128,11 +128,12 @@ impl Connection {
         let req = http::Request::from_parts(parts, body);
 
         trace!(
-            "{} {} {} {}",
+            "{} {} {} {} {:?}",
             self.p,
             self.host_port(),
             req.method(),
-            req.uri()
+            req.uri(),
+            req.headers()
         );
 
         match &mut self.p {

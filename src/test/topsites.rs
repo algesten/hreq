@@ -47,7 +47,7 @@ fn get_apple() {
 #[test]
 fn get_blogspot() {
     super::test_setup();
-    let mut resp = http::Request::get("https://blogspot.com")
+    let mut resp = http::Request::get("https://www.blogspot.com/")
         .call()
         .block()
         .unwrap();

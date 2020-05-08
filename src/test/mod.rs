@@ -15,6 +15,7 @@ use std::net;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Once;
 use std::task::{Context, Poll};
 use tide;
 
@@ -26,13 +27,28 @@ mod gzip;
 mod json;
 mod post;
 mod redir;
-mod simplelog;
 mod timeout;
 
-// mod top;
+#[cfg(feature = "test-topsites")]
+mod topsites;
 
 pub fn test_setup() {
-    simplelog::set_logger();
+    static START: Once = Once::new();
+    START.call_once(|| {
+        let test_log = std::env::var("TEST_LOG")
+            .map(|x| x != "0" && x.to_lowercase() != "false")
+            .unwrap_or(false);
+        let level = if test_log {
+            log::LevelFilter::Trace
+        } else {
+            log::LevelFilter::Info
+        };
+        pretty_env_logger::formatted_builder()
+            .filter_level(log::LevelFilter::Warn)
+            .filter_module("hreq", level)
+            .target(env_logger::Target::Stdout)
+            .init();
+    });
     // We're using async-std for the tests because that's what tide uses.
     AsyncRuntime::AsyncStd.make_default();
 }

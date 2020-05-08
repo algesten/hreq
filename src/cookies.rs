@@ -109,7 +109,7 @@ impl<'c> CookieExt for Cookie<'c> {
             }
         };
 
-        if !is_valid_cookie_domain(&effective) {
+        if !is_valid_cookie_domain(&effective, self.name()) {
             return None;
         }
 
@@ -149,7 +149,7 @@ fn effective_domain(cookie_domain: Option<&str>, uri: &http::Uri) -> Option<Stri
     }
 }
 
-fn is_valid_cookie_domain(domain: &str) -> bool {
+fn is_valid_cookie_domain(domain: &str, name: &str) -> bool {
     let parsed = match PUBLIC_SUFFIX_LIST.parse_domain(domain) {
         Ok(v) => v,
         Err(e) => {
@@ -162,16 +162,18 @@ fn is_valid_cookie_domain(domain: &str) -> bool {
     match (parsed.root(), parsed.suffix()) {
         (Some(root), Some(sufx)) => {
             trace!(
-                "Accept cookie domain with root '{}' and suffix '{}'",
+                "Accept cookie domain with root '{}' and suffix '{}': {}",
                 root,
-                sufx
+                sufx,
+                name
             );
         }
         _ => {
             trace!(
-                "Ignore cookie with root '{:?}' and suffix '{:?}'",
+                "Ignore cookie with root '{:?}' and suffix '{:?}': {}",
                 parsed.root(),
-                parsed.suffix()
+                parsed.suffix(),
+                name
             );
             return false;
         }
@@ -215,7 +217,7 @@ mod test {
     #[test]
     fn valid_cookie_domain() {
         for (test, expect) in EXPECTED_VALID {
-            assert_eq!(is_valid_cookie_domain(test), *expect);
+            assert_eq!(is_valid_cookie_domain(test, "test"), *expect);
         }
     }
 }

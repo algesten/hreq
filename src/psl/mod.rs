@@ -25,6 +25,6 @@ pub static PUBLIC_SUFFIX_LIST: Lazy<List> = Lazy::new(|| {
     let mut d = GzDecoder::new(PslRead(0));
     let mut s = String::new();
     d.read_to_string(&mut s).expect("Ungzip public suffix list");
-    trace!("Public suffix list from: {}", DATE);
+    trace!("Public suffix list from: {}", DATE.trim());
     List::from_string(s).expect("Public suffix list from string")
 });

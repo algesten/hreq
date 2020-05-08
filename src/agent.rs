@@ -169,8 +169,9 @@ impl Agent {
                 c.host_port() == &host_port && (c.is_http2() || c.unfinished_requests() == 0)
             });
         if ret.is_some() {
-            trace!("Reuse from pool: {}", uri);
+            debug!("Reuse from pool: {}", uri);
         }
+        let ret = None;
         Ok(ret)
     }
 
@@ -278,7 +279,7 @@ impl Agent {
                     if orig_hostport == hostport_uri {
                         if let Some(arc) = params.with_override.clone() {
                             let hostport = &*arc;
-                            trace!("Connect new: {} with override: {}", uri, hostport);
+                            debug!("Connect new: {} with override: {}", uri, hostport);
                             conn = Some(connect(&hostport, params.force_http2).await?);
                         }
                     }
@@ -287,7 +288,7 @@ impl Agent {
                     let conn = match conn {
                         Some(conn) => conn,
                         None => {
-                            trace!("Connect new: {}", hostport_uri);
+                            debug!("Connect new: {}", hostport_uri);
                             connect(&hostport_uri, params.force_http2).await?
                         }
                     };
@@ -302,6 +303,8 @@ impl Agent {
                     }
                 }
             };
+
+            debug!("{} {}", req.method(), req.uri());
 
             match conn.send_request(req).await {
                 Ok(mut res) => {
