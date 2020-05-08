@@ -2,11 +2,11 @@
 //! hreq is a user first async http client.
 //!
 //! ### Early days
-//! 
+//!
 //! This library needs road testing. Bug reports and PRs are very welcome!
-//!  
+//!
 //! ### Principles
-//! 
+//!
 //! The principles of this library are:
 //!
 //! * User first API built on the http crate.
@@ -335,6 +335,7 @@ mod either;
 mod error;
 mod h1;
 mod proto;
+mod psl;
 mod req_ext;
 mod reqb_ext;
 mod res_ext;

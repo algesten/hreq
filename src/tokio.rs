@@ -5,7 +5,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio_traits::{TokioAsyncRead, TokioAsyncWrite};
+use tokio_read_write_traits::{TokioAsyncRead, TokioAsyncWrite};
 
 #[cfg(feature = "tokio")]
 pub(crate) fn from_tokio<Z>(adapted: Z) -> impl Stream

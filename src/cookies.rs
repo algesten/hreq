@@ -1,8 +1,8 @@
 //! The structure cookie::CookieJar does not separate cookies per domain. Cookies does.
 
+use crate::psl::PUBLIC_SUFFIX_LIST;
 use crate::uri_ext::UriExt;
 use cookie::{Cookie, CookieJar};
-use psl::PUBLIC_SUFFIX_LIST;
 use std::collections::hash_map::HashMap;
 use time::{Duration, OffsetDateTime};
 

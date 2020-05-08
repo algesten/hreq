@@ -2,7 +2,7 @@
 
 set -euxo pipefail
 
-cd src
+cd src/psl
 
 curl -s -O https://publicsuffix.org/list/public_suffix_list.dat
 gzip -f -9 public_suffix_list.dat

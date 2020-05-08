@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use publicsuffix::List;
 use std::io::{Read, Result as IoResult};
 
-const PSL: &[u8; 71408] = include_bytes!("public_suffix_list.dat.gz");
+const PSL: &[u8; 71489] = include_bytes!("public_suffix_list.dat.gz");
 const DATE: &str = include_str!("date.txt");
 
 struct PslRead(usize);
