@@ -11,7 +11,7 @@ use encoding_rs::Encoding;
 use futures_util::future::poll_fn;
 use futures_util::io::BufReader;
 use futures_util::ready;
-use h2::RecvStream as H2RecvStream;
+use hreq_h2::RecvStream as H2RecvStream;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt;

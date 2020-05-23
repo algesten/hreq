@@ -8,7 +8,7 @@ use crate::uri_ext::MethodExt;
 use crate::Body;
 use crate::Error;
 use bytes::Bytes;
-use h2::client::SendRequest as H2SendRequest;
+use hreq_h2::client::SendRequest as H2SendRequest;
 use once_cell::sync::Lazy;
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};

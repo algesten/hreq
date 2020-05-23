@@ -1,11 +1,11 @@
 use crate::Stream;
 use crate::{AsyncRead, AsyncWrite};
-use std::fmt;
+// use std::fmt;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio_read_write_traits::{TokioAsyncRead, TokioAsyncWrite};
+use tokio_lib::io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite};
 
 #[cfg(feature = "tokio")]
 pub(crate) fn from_tokio<Z>(adapted: Z) -> impl Stream
@@ -52,42 +52,42 @@ where
     //
 }
 
-pub(crate) fn to_tokio<S: Stream>(adapted: S) -> TokioStream<S> {
-    TokioStream { adapted }
-}
+// pub(crate) fn to_tokio<S: Stream>(adapted: S) -> TokioStream<S> {
+//     TokioStream { adapted }
+// }
 
-pub(crate) struct TokioStream<S> {
-    adapted: S,
-}
+// pub(crate) struct TokioStream<S> {
+//     adapted: S,
+// }
 
-impl<S: Stream> fmt::Debug for TokioStream<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TokioStream")
-    }
-}
+// impl<S: Stream> fmt::Debug for TokioStream<S> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "TokioStream")
+//     }
+// }
 
-impl<S: Stream> TokioAsyncRead for TokioStream<S> {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.get_mut().adapted).poll_read(cx, buf)
-    }
-}
+// impl<S: Stream> TokioAsyncRead for TokioStream<S> {
+//     fn poll_read(
+//         self: Pin<&mut Self>,
+//         cx: &mut Context<'_>,
+//         buf: &mut [u8],
+//     ) -> Poll<io::Result<usize>> {
+//         Pin::new(&mut self.get_mut().adapted).poll_read(cx, buf)
+//     }
+// }
 
-impl<S: Stream> TokioAsyncWrite for TokioStream<S> {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.get_mut().adapted).poll_write(cx, buf)
-    }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.get_mut().adapted).poll_flush(cx)
-    }
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.get_mut().adapted).poll_close(cx)
-    }
-}
+// impl<S: Stream> TokioAsyncWrite for TokioStream<S> {
+//     fn poll_write(
+//         self: Pin<&mut Self>,
+//         cx: &mut Context<'_>,
+//         buf: &[u8],
+//     ) -> Poll<Result<usize, io::Error>> {
+//         Pin::new(&mut self.get_mut().adapted).poll_write(cx, buf)
+//     }
+//     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+//         Pin::new(&mut self.get_mut().adapted).poll_flush(cx)
+//     }
+//     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+//         Pin::new(&mut self.get_mut().adapted).poll_close(cx)
+//     }
+// }

@@ -339,7 +339,6 @@ mod psl;
 mod req_ext;
 mod reqb_ext;
 mod res_ext;
-mod tokio;
 mod uri_ext;
 
 #[cfg(feature = "tls")]
@@ -347,6 +346,9 @@ mod tls;
 
 #[cfg(all(test, feature = "async-std"))]
 mod test;
+
+#[cfg(feature = "tokio")]
+mod tokio;
 
 pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -383,7 +385,6 @@ pub mod prelude {
 use crate::conn::Connection;
 use crate::conn::ProtocolImpl;
 use crate::proto::Protocol;
-use crate::tokio::to_tokio;
 use crate::uri_ext::HostPort;
 
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
@@ -433,7 +434,7 @@ pub(crate) async fn open_stream(
     proto: Protocol,
 ) -> Result<Connection, Error> {
     if proto == Protocol::Http2 {
-        let (h2, h2conn) = h2::client::handshake(to_tokio(stream)).await?;
+        let (h2, h2conn) = hreq_h2::client::handshake(stream).await?;
         // drives the connection independently of the h2 api surface.
         AsyncRuntime::spawn(async {
             if let Err(err) = h2conn.await {

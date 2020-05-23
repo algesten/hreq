@@ -17,7 +17,7 @@ pub enum Error {
     /// Failures to parse incoming HTTP/1.1 responses.
     Http11Parser(httparse::Error),
     /// Errors originating in HTTP/2 (via the `h2` crate).
-    H2(h2::Error),
+    H2(hreq_h2::Error),
     /// Error from the `http` crate, such as `http::Request`, `http::Response` or URI.
     Http(http::Error),
     /// JSON deserialization errors.
@@ -106,8 +106,8 @@ impl From<h1::Error> for Error {
     }
 }
 
-impl From<h2::Error> for Error {
-    fn from(e: h2::Error) -> Self {
+impl From<hreq_h2::Error> for Error {
+    fn from(e: hreq_h2::Error) -> Self {
         if e.is_io() {
             Error::Io(e.into_io().unwrap())
         } else {

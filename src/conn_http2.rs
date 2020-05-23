@@ -4,7 +4,7 @@ use crate::Body;
 use crate::Error;
 use bytes::Bytes;
 use futures_util::future::poll_fn;
-use h2::client::SendRequest;
+use hreq_h2::client::SendRequest;
 use std::sync::Arc;
 
 const BUF_SIZE: usize = 16_384;

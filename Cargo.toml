@@ -16,7 +16,7 @@ all-features = true
 
 [features]
 default = [
-    "tokio",
+#    "tokio",
 #    "async-std",
     "gzip",
     "tls"
@@ -41,9 +41,9 @@ test-topsites = []
 bytes = "0.5"
 cookie = { version = "0.13", features = ["percent-encode"] }
 flate2 = "1"
-futures-io = { version = "0.3" }
+futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
-h2 = "0.2"
+hreq-h2 = { version = "0.2.5", path = "../hreq-h2" }
 http = "0.2"
 httparse = "1"
 log = "0.4"
@@ -51,7 +51,7 @@ once_cell = "1"
 qstring = "0.7"
 async-trait = "0.1"
 encoding_rs = "0.8"
-publicsuffix = { version = "1", default-features = false }
+publicsuffix = { default-features = false, version = "1.5.4" }
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 # keep in sync with time brought in by cookie
@@ -61,7 +61,6 @@ time = "=0.2.9"
 async-std-lib = { package = "async-std", version = "1", optional = true }
 
 ## tokio
-tokio-read-write-traits = "0.2"
 tokio-lib = { package = "tokio", version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time", "fs"], optional = true }
 
 ## gzip
