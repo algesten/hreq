@@ -279,15 +279,39 @@ pub(crate) mod async_tokio {
         *rt_singleton = rt;
     }
 
+    fn unset_singletons() {
+        let unset = || {
+            let rt = RUNTIME.lock().unwrap().take();
+            {
+                let _ = HANDLE.lock().unwrap().take(); // go out of scope
+            }
+            if let Some(rt) = rt {
+                rt.shutdown_timeout(Duration::from_millis(10));
+            }
+        };
+
+        // this fails if we are currently running in a tokio context.
+        let is_in_context = Handle::try_current().is_ok();
+
+        if is_in_context {
+            std::thread::spawn(unset).join().unwrap();
+        } else {
+            unset();
+        }
+    }
+
     pub(crate) fn use_default() {
+        unset_singletons();
         let (handle, rt) = create_default_runtime();
         set_singletons(handle, Some(rt));
     }
     pub(crate) fn use_shared() {
+        unset_singletons();
         let handle = Handle::current();
         set_singletons(handle, None);
     }
     pub(crate) fn use_owned(rt: TokioRuntime) {
+        unset_singletons();
         let handle = rt.handle().clone();
         set_singletons(handle, Some(rt));
     }
