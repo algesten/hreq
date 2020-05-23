@@ -1,6 +1,6 @@
 [package]
 name = "hreq"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Martin Algesten <martin@lookback.io>"]
 description = "hreq is a user first async http client"
 license = "MIT/Apache-2.0"
@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["web", "request", "http", "rest", "client"]
 categories = ["web-programming::http-client"]
 edition = "2018"
+
+
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = [
@@ -76,7 +80,3 @@ tide = "0.6"
 async-std-lib = { package = "async-std", version = "1", features = ["unstable"] }
 paste = "0.1"
 rand = "0.7"
-
-
-[package.metadata.docs.rs]
-all-features = true
