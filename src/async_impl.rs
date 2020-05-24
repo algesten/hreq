@@ -192,16 +192,16 @@ pub(crate) mod smol {
     pub(crate) async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
         Ok(FakeStream) // fulfil type checker
     }
-    pub async fn timeout(_: Duration) {
+    pub(crate) async fn timeout(_: Duration) {
         unreachable!();
     }
-    pub fn spawn<T>(_: T)
+    pub(crate) fn spawn<T>(_: T)
     where
         T: Future + Send + 'static,
     {
         unreachable!();
     }
-    pub fn block_on<F: Future>(_: F) -> F::Output {
+    pub(crate) fn block_on<F: Future>(_: F) -> F::Output {
         unreachable!();
     }
 }
@@ -219,11 +219,11 @@ pub(crate) mod smol {
         Ok(Async::<TcpStream>::connect(addr).await?)
     }
 
-    pub async fn timeout(duration: Duration) {
+    pub(crate) async fn timeout(duration: Duration) {
         Timer::after(duration).await;
     }
 
-    pub fn spawn<T>(task: T)
+    pub(crate) fn spawn<T>(task: T)
     where
         T: Future + Send + 'static,
     {
@@ -232,7 +232,7 @@ pub(crate) mod smol {
         }).detach();
     }
 
-    pub fn block_on<F: Future>(task: F) -> F::Output {
+    pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
         run(task)
     }
 }
@@ -240,19 +240,19 @@ pub(crate) mod smol {
 #[cfg(not(feature = "async-std"))]
 mod async_std {
     use super::*;
-    async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
+    pub(crate) async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
         Ok(FakeStream) // fulfil type checker
     }
-    async fn timeout(_: Duration) {
+    pub(crate) async fn timeout(_: Duration) {
         unreachable!();
     }
-    fn spawn<T>(_: T)
+    pub(crate) fn spawn<T>(_: T)
     where
         T: Future + Send + 'static,
     {
         unreachable!();
     }
-    fn block_on<F: Future>(_: F) -> F::Output {
+    pub(crate) fn block_on<F: Future>(_: F) -> F::Output {
         unreachable!();
     }
 }
@@ -270,11 +270,11 @@ pub(crate) mod async_std {
         Ok(TcpStream::connect(addr).await?)
     }
 
-    pub async fn timeout(duration: Duration) {
+    pub(crate) async fn timeout(duration: Duration) {
         async_std_lib::future::timeout(duration, never()).await.ok();
     }
 
-    pub fn spawn<T>(task: T)
+    pub(crate) fn spawn<T>(task: T)
     where
         T: Future + Send + 'static,
     {
@@ -283,7 +283,7 @@ pub(crate) mod async_std {
         });
     }
 
-    pub fn block_on<F: Future>(task: F) -> F::Output {
+    pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
         task::block_on(task)
     }
 }
@@ -304,16 +304,16 @@ pub(crate) mod async_tokio {
     pub(crate) async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
         Ok(FakeStream) // fulfil type checker
     }
-    pub async fn timeout(_: Duration) {
+    pub(crate) async fn timeout(_: Duration) {
         unreachable!();
     }
-    pub fn spawn<T>(_: T)
+    pub(crate) fn spawn<T>(_: T)
     where
         T: Future + Send + 'static,
     {
         unreachable!();
     }
-    pub fn block_on<F: Future>(_: F) -> F::Output {
+    pub(crate) fn block_on<F: Future>(_: F) -> F::Output {
         unreachable!();
     }
 }
@@ -388,10 +388,10 @@ pub(crate) mod async_tokio {
     pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
         Ok(from_tokio(TcpStream::connect(addr).await?))
     }
-    pub async fn timeout(duration: Duration) {
+    pub(crate) async fn timeout(duration: Duration) {
         tokio_lib::time::delay_for(duration).await;
     }
-    pub fn spawn<T>(task: T)
+    pub(crate) fn spawn<T>(task: T)
     where
         T: Future + Send + 'static,
     {
@@ -400,7 +400,7 @@ pub(crate) mod async_tokio {
             task.await;
         });
     }
-    pub fn block_on<F: Future>(task: F) -> F::Output {
+    pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
         let mut rt = RUNTIME.lock().unwrap();
         if let Some(rt) = rt.as_mut() {
             rt.block_on(task)
