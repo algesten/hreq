@@ -42,7 +42,7 @@ bytes = "0.5"
 cookie = { version = "0.13", features = ["percent-encode"] }
 flate2 = "1"
 futures-io = { version = "0.3" }
-futures-util = { version = "0.3", features = ["io"] }
+futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
 h2 = "0.2"
 http = "0.2"
 httparse = "1"
