@@ -16,6 +16,7 @@ use tokio_lib::runtime::Runtime as TokioRuntime;
 #[cfg(not(feature = "tokio"))]
 pub(crate) struct TokioRuntime;
 
+#[allow(clippy::needless_doctest_main)]
 /// Switches between different async runtimes.
 ///
 /// This is a global singleton.
@@ -76,6 +77,7 @@ pub(crate) struct TokioRuntime;
 /// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
 /// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum AsyncRuntime {
     #[cfg(feature = "smol")]
     Smol,
@@ -117,7 +119,7 @@ fn current() -> Inner {
 }
 
 impl AsyncRuntime {
-    fn to_inner(self) -> Inner {
+    fn into_inner(self) -> Inner {
         match self {
             #[cfg(feature = "smol")]
             AsyncRuntime::Smol => Inner::Smol,
@@ -143,7 +145,7 @@ impl AsyncRuntime {
 
     pub fn make_default(self) {
         let mut current = CURRENT_RUNTIME.lock().unwrap();
-        let inner = self.to_inner();
+        let inner = self.into_inner();
         *current = inner;
     }
 
