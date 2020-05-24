@@ -25,7 +25,7 @@ pub(crate) struct TokioRuntime;
 ///
 ///   * `AsyncStd`. Requires the feature `async-std`. Supports
 ///     `.block()`.
-///   * `TokioDefault`. The default option. A minimal tokio `rt-core`
+///   * `TokioSingle`. The default option. A minimal tokio `rt-core`
 ///     which executes calls in one single thread. It does nothing
 ///     until the current thread blocks on a future using `.block()`.
 ///   * `TokioShared`. Picks up on a globally shared runtime by using a
@@ -79,7 +79,7 @@ pub enum AsyncRuntime {
     #[cfg(feature = "async-std")]
     AsyncStd,
     #[cfg(feature = "tokio")]
-    TokioDefault,
+    TokioSingle,
     #[cfg(feature = "tokio")]
     TokioShared,
     #[cfg(feature = "tokio")]
@@ -90,7 +90,7 @@ pub enum AsyncRuntime {
 #[allow(unused)]
 enum Inner {
     AsyncStd,
-    TokioDefault,
+    TokioSingle,
     TokioShared,
     TokioOwned,
 }
@@ -100,7 +100,7 @@ static CURRENT_RUNTIME: Lazy<Mutex<Inner>> = Lazy::new(|| {
         Inner::AsyncStd
     } else if cfg!(feature = "tokio") {
         async_tokio::use_default();
-        Inner::TokioDefault
+        Inner::TokioSingle
     } else {
         panic!("No default async runtime. Use feature 'tokio' or 'async-std'");
     })
@@ -116,9 +116,9 @@ impl AsyncRuntime {
             #[cfg(feature = "async-std")]
             AsyncRuntime::AsyncStd => Inner::AsyncStd,
             #[cfg(feature = "tokio")]
-            AsyncRuntime::TokioDefault => {
+            AsyncRuntime::TokioSingle => {
                 async_tokio::use_default();
-                Inner::TokioDefault
+                Inner::TokioSingle
             }
             #[cfg(feature = "tokio")]
             AsyncRuntime::TokioShared => {
@@ -143,7 +143,7 @@ impl AsyncRuntime {
         use Inner::*;
         Ok(match current() {
             AsyncStd => Either::A(async_std::connect_tcp(addr).await?),
-            TokioDefault | TokioShared | TokioOwned => {
+            TokioSingle | TokioShared | TokioOwned => {
                 Either::B(async_tokio::connect_tcp(addr).await?)
             }
         })
@@ -153,7 +153,7 @@ impl AsyncRuntime {
         use Inner::*;
         match current() {
             AsyncStd => async_std::timeout(duration).await,
-            TokioDefault | TokioShared | TokioOwned => async_tokio::timeout(duration).await,
+            TokioSingle | TokioShared | TokioOwned => async_tokio::timeout(duration).await,
         }
     }
 
@@ -161,7 +161,7 @@ impl AsyncRuntime {
         use Inner::*;
         match current() {
             AsyncStd => async_std::spawn(task),
-            TokioDefault | TokioShared | TokioOwned => async_tokio::spawn(task),
+            TokioSingle | TokioShared | TokioOwned => async_tokio::spawn(task),
         }
     }
 
@@ -169,7 +169,7 @@ impl AsyncRuntime {
         use Inner::*;
         match current() {
             AsyncStd => async_std::block_on(task),
-            TokioDefault | TokioShared | TokioOwned => async_tokio::block_on(task),
+            TokioSingle | TokioShared | TokioOwned => async_tokio::block_on(task),
         }
     }
 }

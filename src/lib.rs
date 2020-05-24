@@ -104,7 +104,7 @@
 //!
 //!   * `AsyncStd`. Requires the feature `async-std`. Supports
 //!     `.block()`.
-//!   * `TokioDefault`. The default option. A minimal tokio `rt-core`
+//!   * `TokioSingle`. The default option. A minimal tokio `rt-core`
 //!     which executes calls in one single thread. It does nothing
 //!     until the current thread blocks on a future using `.block()`.
 //!   * `TokioShared`. Picks up on a shared runtime by using a

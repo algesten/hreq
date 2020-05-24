@@ -21,7 +21,7 @@ use std::future::Future;
 /// which is a single threaded executor. The user can configure
 /// hreq into a runtime with thread pools and work stealing.
 ///
-/// The default runtime configuration is [`TokioDefault`] which
+/// The default runtime configuration is [`TokioSingle`] which
 /// supports `.block()`.
 ///
 /// # Usage
@@ -63,7 +63,7 @@ use std::future::Future;
 /// shared runtime and we can always use the [`block_on`] function.
 ///
 /// [`AsyncRuntime`]: enum.AsyncRuntime.html
-/// [`TokioDefault`]: enum.AsyncRuntime.html#variant.TokioDefault
+/// [`TokioSingle`]: enum.AsyncRuntime.html#variant.TokioSingle
 /// [`TokioShared`]: enum.AsyncRuntime.html#variant.TokioShared
 /// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
 /// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
