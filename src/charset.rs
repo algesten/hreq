@@ -75,8 +75,12 @@ impl CharCodec {
             if encode_had_errors {
                 debug!("Character encoder had errors");
             }
+
+            // encode_read is a char offset into the string. we don't need to
+            // split this on a byte offset.
             let rest = self.decoded.split_off(encode_read);
             self.decoded = rest;
+
             Ok(encode_written).into()
         } else {
             // the output is utf8, and that's what we already have,
