@@ -17,9 +17,13 @@ all-features = true
 [features]
 default = [
     "tokio",
-#    "async-std",
+    # "smol",
+    # "async-std",
     "gzip",
     "tls"
+]
+smol = [
+    "smol-lib"
 ]
 async-std = [
     "async-std-lib",
@@ -56,6 +60,9 @@ serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 # keep in sync with time brought in by cookie
 time = "=0.2.9"
+
+## smol
+smol-lib = { package="smol", version = "0.1", optional = true }
 
 ## async-std
 async-std-lib = { package = "async-std", version = "1", optional = true }

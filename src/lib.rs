@@ -102,6 +102,7 @@
 //! The async runtime is "pluggable" and comes in some different
 //! flavors.
 //!
+//!   * `Smol`. Requires the feature `smol`. Supports `.block()`
 //!   * `AsyncStd`. Requires the feature `async-std`. Supports
 //!     `.block()`.
 //!   * `TokioSingle`. The default option. A minimal tokio `rt-core`

@@ -23,6 +23,7 @@ pub(crate) struct TokioRuntime;
 /// hreq supports async-std and tokio. Tokio support is enabled by default and comes in some
 /// different flavors.
 ///
+///   * `Smol`. Requires the feature `smol`. Supports `.block()`
 ///   * `AsyncStd`. Requires the feature `async-std`. Supports
 ///     `.block()`.
 ///   * `TokioSingle`. The default option. A minimal tokio `rt-core`
@@ -76,6 +77,8 @@ pub(crate) struct TokioRuntime;
 /// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
 #[derive(Debug)]
 pub enum AsyncRuntime {
+    #[cfg(feature = "smol")]
+    Smol,
     #[cfg(feature = "async-std")]
     AsyncStd,
     #[cfg(feature = "tokio")]
@@ -89,6 +92,7 @@ pub enum AsyncRuntime {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(unused)]
 enum Inner {
+    Smol,
     AsyncStd,
     TokioSingle,
     TokioShared,
@@ -96,7 +100,9 @@ enum Inner {
 }
 
 static CURRENT_RUNTIME: Lazy<Mutex<Inner>> = Lazy::new(|| {
-    Mutex::new(if cfg!(feature = "async-std") {
+    Mutex::new(if cfg!(feature = "smol") {
+        Inner::Smol
+    } else if cfg!(feature = "async-std") {
         Inner::AsyncStd
     } else if cfg!(feature = "tokio") {
         async_tokio::use_default();
@@ -113,6 +119,8 @@ fn current() -> Inner {
 impl AsyncRuntime {
     fn to_inner(self) -> Inner {
         match self {
+            #[cfg(feature = "smol")]
+            AsyncRuntime::Smol => Inner::Smol,
             #[cfg(feature = "async-std")]
             AsyncRuntime::AsyncStd => Inner::AsyncStd,
             #[cfg(feature = "tokio")]
@@ -142,16 +150,18 @@ impl AsyncRuntime {
     pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
         use Inner::*;
         Ok(match current() {
-            AsyncStd => Either::A(async_std::connect_tcp(addr).await?),
             TokioSingle | TokioShared | TokioOwned => {
-                Either::B(async_tokio::connect_tcp(addr).await?)
+                Either::A(async_tokio::connect_tcp(addr).await?)
             }
+            Smol => Either::B(Either::A(smol::connect_tcp(addr).await?)),
+            AsyncStd => Either::B(Either::B(async_std::connect_tcp(addr).await?)),
         })
     }
 
     pub(crate) async fn timeout(duration: Duration) {
         use Inner::*;
         match current() {
+            Smol => smol::timeout(duration).await,
             AsyncStd => async_std::timeout(duration).await,
             TokioSingle | TokioShared | TokioOwned => async_tokio::timeout(duration).await,
         }
@@ -160,6 +170,7 @@ impl AsyncRuntime {
     pub(crate) fn spawn<T: Future + Send + 'static>(task: T) {
         use Inner::*;
         match current() {
+            Smol => smol::spawn(task),
             AsyncStd => async_std::spawn(task),
             TokioSingle | TokioShared | TokioOwned => async_tokio::spawn(task),
         }
@@ -168,19 +179,15 @@ impl AsyncRuntime {
     pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
         use Inner::*;
         match current() {
+            Smol => smol::block_on(task),
             AsyncStd => async_std::block_on(task),
             TokioSingle | TokioShared | TokioOwned => async_tokio::block_on(task),
         }
     }
 }
 
-// pub async fn connect_tcp(addr: &str) -> Result<impl Stream, Error>;
-// pub async fn timeout(duration: Duration);
-// pub fn spawn<T>(task: T) where T: Future + Send + 'static;
-// pub fn block_on<F: Future>(task: F) -> F::Output;
-
-#[cfg(not(feature = "async-std"))]
-pub(crate) mod async_std {
+#[cfg(not(feature = "smol"))]
+pub(crate) mod smol {
     use super::*;
     pub(crate) async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
         Ok(FakeStream) // fulfil type checker
@@ -195,6 +202,57 @@ pub(crate) mod async_std {
         unreachable!();
     }
     pub fn block_on<F: Future>(_: F) -> F::Output {
+        unreachable!();
+    }
+}
+
+#[cfg(feature = "smol")]
+#[allow(unused)]
+pub(crate) mod smol {
+    use super::*;
+    use smol_lib::{run, Async, Task, Timer};
+    use std::net::TcpStream;
+
+    impl Stream for smol_lib::Async<TcpStream> {}
+
+    pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
+        Ok(Async::<TcpStream>::connect(addr).await?)
+    }
+
+    pub async fn timeout(duration: Duration) {
+        Timer::after(duration).await;
+    }
+
+    pub fn spawn<T>(task: T)
+    where
+        T: Future + Send + 'static,
+    {
+        Task::spawn(async move {
+            task.await;
+        }).detach();
+    }
+
+    pub fn block_on<F: Future>(task: F) -> F::Output {
+        run(task)
+    }
+}
+
+#[cfg(not(feature = "async-std"))]
+mod async_std {
+    use super::*;
+    async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
+        Ok(FakeStream) // fulfil type checker
+    }
+    async fn timeout(_: Duration) {
+        unreachable!();
+    }
+    fn spawn<T>(_: T)
+    where
+        T: Future + Send + 'static,
+    {
+        unreachable!();
+    }
+    fn block_on<F: Future>(_: F) -> F::Output {
         unreachable!();
     }
 }
