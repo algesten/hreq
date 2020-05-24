@@ -40,6 +40,7 @@ tls = [
     "webpki-roots",
 ]
 test-topsites = []
+fuzz = []
 
 [dependencies]
 bytes = "0.5"

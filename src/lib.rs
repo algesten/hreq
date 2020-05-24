@@ -366,6 +366,9 @@ pub use crate::res_ext::ResponseExt;
 pub use cookie::Cookie;
 pub use http;
 
+#[cfg(feature = "fuzz")]
+pub use crate::charset::CharCodec;
+
 pub mod prelude {
     //! A "prelude" for users of the hreq crate.
     //!

@@ -11,14 +11,16 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.3"
+encoding_rs = "*"
 
 [dependencies.hreq]
 path = ".."
+features = ["fuzz"]
 
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "fuzz_charset"
+path = "fuzz_targets/fuzz_charset.rs"

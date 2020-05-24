@@ -490,7 +490,7 @@ impl Body {
 
         if let Some(new_codec) = new_codec {
             // to avoid creating another BufReader
-            mem::replace(self.codec.get_mut(), new_codec);
+            let _ = mem::replace(self.codec.get_mut(), new_codec);
         }
 
         // TODO sniff charset from html pages like

@@ -42,6 +42,20 @@ impl CharCodec {
         // get some incoming bytes from source
         let src = ready!(Pin::new(&mut *from).poll_fill_buf(cx))?;
 
+        let mut consumed = 0;
+        let ret = self.decode_from_buf(src, dst, &mut consumed);
+
+        Pin::new(&mut *from).consume(consumed);
+
+        Poll::Ready(ret)
+    }
+
+    pub fn decode_from_buf(
+        &mut self,
+        src: &[u8],
+        dst: &mut [u8],
+        consumed: &mut usize,
+    ) -> Result<usize, io::Error> {
         // true once when we reach EOF first time
         let mut became_end = false;
 
@@ -61,7 +75,7 @@ impl CharCodec {
                 debug!("Character decoder had errors");
             }
 
-            Pin::new(&mut *from).consume(decode_read);
+            *consumed = decode_read;
 
             // this unsafe is ok because we trust encoding_rs produces legit utf8.
             let decoded = unsafe { std::str::from_utf8_unchecked(&decode_to[0..decode_written]) };
@@ -81,7 +95,7 @@ impl CharCodec {
             let rest = self.decoded.split_off(encode_read);
             self.decoded = rest;
 
-            Ok(encode_written).into()
+            Ok(encode_written)
         } else {
             // the output is utf8, and that's what we already have,
             // don't do any additional encoding.
@@ -100,7 +114,7 @@ impl CharCodec {
             let rest = vec.split_off(max);
             mem::replace(vec, rest);
 
-            Ok(max).into()
+            Ok(max)
         }
     }
 }
