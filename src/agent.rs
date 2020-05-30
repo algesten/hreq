@@ -280,13 +280,13 @@ impl Agent {
                         if let Some(arc) = params.with_override.clone() {
                             let hostport = &*arc;
                             debug!("Connect new: {} with override: {}", uri, hostport);
-                            conn = Some(connect(&hostport, params.force_http2).await?);
+                            conn = Some(connect(hostport, params.force_http2).await?);
                         }
                     }
 
-                    // no override for this connection.
                     let conn = match conn {
                         Some(conn) => conn,
+                        // no override for this connection.
                         None => {
                             debug!("Connect new: {}", hostport_uri);
                             connect(&hostport_uri, params.force_http2).await?
@@ -327,7 +327,6 @@ impl Agent {
                     }
 
                     // follow redirections
-                    let code = res.status_code();
                     if res.status().is_redirection() {
                         redirects -= 1;
 
@@ -348,6 +347,7 @@ impl Agent {
                         parts.uri = parts.uri.parse_relative(location)?;
                         next_req = http::Request::from_parts(parts, body);
 
+                        let code = res.status_code();
                         if code > 303 {
                             // TODO fix 307 and 308 using Expect-100 mechanic.
                             warn!("Unhandled redirection status: {} {}", code, location);
@@ -362,8 +362,11 @@ impl Agent {
                             self.connections.retain(|c| c.id() != conn_id);
                         }
 
+                        // following redirects means priming next_req and looping from the top
                         continue;
                     }
+
+                    // a non-redirect is a ready response returned to the user
                     break Ok(res);
                 }
                 Err(err) => {
@@ -389,6 +392,7 @@ impl Agent {
     }
 }
 
+/// On redirects, we need the entire request sans the original body.
 fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
     // most things can be cloned in the builder.
     let req = http::Request::builder()

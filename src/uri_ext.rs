@@ -20,9 +20,14 @@ impl MethodExt for http::Method {
 }
 
 pub(crate) trait UriExt {
+    /// host:port
     fn host_port(&self) -> Result<HostPort<'_>, Error>;
+    /// Parse a uri relative to some other base uri. We can resolve
+    /// a uri containing only a path relative to some uri having a host.
     fn parse_relative(&self, from: &str) -> Result<http::Uri, Error>;
+    /// For cookie matching we parent host names. a.b.com -> b.com
     fn parent_host(&self) -> Option<http::Uri>;
+    /// Tell if this URI is using a secure protocol (i.e. https).
     fn is_secure(&self) -> bool;
 }
 
