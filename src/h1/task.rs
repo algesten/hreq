@@ -1,6 +1,5 @@
 use super::http11::{try_parse_http11, write_http11_req};
 use super::Error;
-use super::State;
 use std::ops::Deref;
 use std::task::Waker;
 
@@ -57,15 +56,6 @@ impl Task {
         }
     }
 
-    pub fn task_waker(&self) -> Option<Waker> {
-        match self {
-            Task::SendReq(_) => None,
-            Task::SendBody(t) => t.task_waker.clone(),
-            Task::RecvRes(t) => Some(t.task_waker.clone()),
-            Task::RecvBody(t) => Some(t.task_waker.clone()),
-        }
-    }
-
     pub fn is_send_req(&self) -> bool {
         if let Task::SendReq(_) = self {
             return true;
@@ -119,7 +109,7 @@ impl SendReq {
 pub struct SendBody {
     pub info: TaskInfo,
     pub body: Vec<u8>,
-    pub end: bool,
+    pub end: bool, // last body chunk to send
     pub task_waker: Option<Waker>,
 }
 
@@ -138,6 +128,9 @@ impl SendBody {
 pub struct RecvRes {
     pub info: TaskInfo,
     pub buf: Vec<u8>,
+    // end is set by connection when we have a complete response
+    // info.completed is set when we can tidy away the received response
+    pub end: bool,
     pub task_waker: Waker,
 }
 
@@ -146,6 +139,7 @@ impl RecvRes {
         RecvRes {
             info: TaskInfo::new(seq),
             buf: Vec::with_capacity(HEADER_BUF_SIZE),
+            end: false,
             task_waker,
         }
     }
@@ -172,6 +166,8 @@ pub struct RecvBody {
     pub info: TaskInfo,
     pub buf: Vec<u8>,
     pub read_max: usize,
+    // when there is no more to read from server,
+    // info.complete means buf has also been completely read
     pub end: bool,
     pub reuse_conn: bool,
     pub task_waker: Waker,
@@ -213,16 +209,6 @@ impl Tasks {
 
     pub fn prune_completed(&mut self) {
         self.list.retain(|t| !t.info().complete);
-    }
-
-    pub fn task_for_state(&mut self, seq: Seq, state: State) -> Option<&mut Task> {
-        match state {
-            State::Ready => self.get_task(seq, Task::is_send_req),
-            State::SendBody => self.get_task(seq, Task::is_send_body),
-            State::Waiting => self.get_task(seq, Task::is_recv_res),
-            State::RecvBody => self.get_task(seq, Task::is_recv_body),
-            State::Closed => None,
-        }
     }
 
     fn get_task<F: Fn(&Task) -> bool>(&mut self, seq: Seq, func: F) -> Option<&mut Task> {

@@ -1,4 +1,4 @@
-use super::task::{RecvBody, RecvRes, SendBody, SendReq, Seq, Task};
+use super::task::{RecvBody, RecvRes, SendBody, SendReq, Seq};
 use super::Inner;
 use super::State;
 use super::{AsyncRead, AsyncWrite};
@@ -7,18 +7,176 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 pub struct Connection<S> {
     io: S,
     inner: Weak<Mutex<Inner>>,
 }
 
-impl<S> Connection<S> {
+impl<S> Connection<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     pub(crate) fn new(io: S, inner: &Arc<Mutex<Inner>>) -> Self {
         Connection {
             io,
             inner: Arc::downgrade(inner),
+        }
+    }
+
+    fn poll_try_recv_res(
+        &mut self,
+        inner: &mut Inner,
+        cur_seq: Seq,
+        last_task_waker: &mut Option<Waker>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<bool, io::Error>> {
+        if let Some(task) = inner.tasks.get_recv_res(cur_seq) {
+            *last_task_waker = Some(task.task_waker.clone());
+            if task.end {
+                return Ok(true).into();
+            }
+            match task.poll_connection(cx, &mut self.io) {
+                Poll::Pending => {
+                    // that's ok, we will go to pending by virtue of there
+                    // being no SendBody tasks.
+                }
+                Poll::Ready(v) => {
+                    if let Err(e) = v {
+                        // If the remote side abruptly closes the connection after
+                        // sending the response header, we might have a whole response
+                        if task.end {
+                            inner.state = State::Closed;
+                            return Ok(true).into();
+                        } else {
+                            return Err(e).into();
+                        }
+                    }
+                    if task.end {
+                        // we got a complete response. this means we will
+                        // transition away from this state, either to
+                        // SendBody (if there are body chunks left to send)
+                        // or RecvBody).
+                        return Ok(true).into();
+                    }
+                }
+            }
+        }
+        Ok(false).into()
+    }
+
+    fn poll_drive(
+        &mut self,
+        inner: &mut Inner,
+        last_task_waker: &mut Option<Waker>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            let cur_seq = Seq(inner.cur_seq);
+
+            // prune before getting any task for the state, to avoid getting stale.
+            inner.tasks.prune_completed();
+
+            match inner.state {
+                State::Ready => {
+                    if let Some(task) = inner.tasks.get_send_req(cur_seq) {
+                        *last_task_waker = None;
+                        ready!(task.poll_connection(cx, &mut self.io))?;
+                        if task.info.complete {
+                            if task.end {
+                                // no body to send
+                                inner.state = State::Waiting;
+                            } else {
+                                inner.state = State::SendBodyAndWaiting;
+                            }
+                        }
+                    } else {
+                        break Poll::Pending;
+                    }
+                }
+                State::SendBodyAndWaiting => {
+                    // We might receive the response while still sending the body.
+                    // This could happen on Expect-100 or 307/308 redirects.
+                    // We will drive both the RecvRes task and the SendBody task
+                    // at the same time.
+
+                    let has_response =
+                        match self.poll_try_recv_res(inner, cur_seq, last_task_waker, cx) {
+                            Poll::Pending => false,
+                            Poll::Ready(Ok(v)) => v,
+                            Poll::Ready(Err(e)) => return Err(e).into(),
+                        };
+
+                    if has_response && inner.state == State::SendBodyAndWaiting {
+                        inner.state = State::SendBody;
+                        continue;
+                    }
+
+                    if let Some(task) = inner.tasks.get_send_body(cur_seq) {
+                        *last_task_waker = task.task_waker.clone();
+                        ready!(task.poll_connection(cx, &mut self.io))?;
+                        if task.info.complete && task.end {
+                            // send body chunks is done, just wait for response
+                            inner.state = State::Waiting;
+                        }
+                    } else {
+                        return Poll::Pending;
+                    }
+                }
+                State::SendBody => {
+                    if let Some(task) = inner.tasks.get_send_body(cur_seq) {
+                        *last_task_waker = task.task_waker.clone();
+                        ready!(task.poll_connection(cx, &mut self.io))?;
+                        if task.info.complete && task.end {
+                            // send body is done, and we already got a response
+                            inner.state = State::RecvBody;
+                        }
+                    } else {
+                        return Poll::Pending;
+                    }
+                }
+                State::Waiting => {
+                    let has_response =
+                        match self.poll_try_recv_res(inner, cur_seq, last_task_waker, cx) {
+                            Poll::Pending => false,
+                            Poll::Ready(Ok(v)) => v,
+                            Poll::Ready(Err(e)) => return Err(e).into(),
+                        };
+                    if has_response {
+                        // we got a response, and send body is done
+                        inner.state = State::RecvBody;
+                    }
+                }
+                State::RecvBody => {
+                    if let Some(task) = inner.tasks.get_recv_body(cur_seq) {
+                        *last_task_waker = Some(task.task_waker.clone());
+                        ready!(task.poll_connection(cx, &mut self.io))?;
+                        if task.end {
+                            if task.reuse_conn {
+                                inner.cur_seq += 1;
+                                trace!("New cur_seq: {}", inner.cur_seq);
+                                inner.state = State::Ready;
+                            } else {
+                                inner.state = State::Closed;
+                            }
+                        }
+                    } else {
+                        return Poll::Pending;
+                    }
+                }
+                State::Closed => {
+                    if let Some(e) = inner.error.as_ref() {
+                        trace!("Connection closed with error");
+                        // connection gets a fake copy while the client gets the original
+                        let fake = io::Error::new(e.kind(), e.to_string());
+                        return Err(fake).into();
+                    } else {
+                        trace!("Connection closed");
+                        return Ok(()).into();
+                    }
+                }
+            }
         }
     }
 }
@@ -32,106 +190,41 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        let arc_opt = this.inner.upgrade();
-        if arc_opt.is_none() {
-            // all handles to operate on this connection are gone.
-            // TODO preserve connection errors that are gone with Inner being dropped.
-            return Ok(()).into();
-        }
-        let arc_mutex = arc_opt.unwrap();
+        let arc_mutex = match this.inner.upgrade() {
+            None => {
+                // all handles to operate on this connection are gone.
+                // TODO preserve connection errors that are gone with Inner being dropped.
+                return Ok(()).into();
+            }
+            Some(v) => v,
+        };
 
         let mut inner = arc_mutex.lock().unwrap();
 
         inner.conn_waker = Some(cx.waker().clone());
 
         let mut last_task_waker = None;
-        let mut delayed_error_waiting = false;
 
-        loop {
-            let cur_seq = Seq(inner.cur_seq);
-            let mut state = inner.state; // copy to appease borrow checker
-
-            if state == State::Closed {
-                if let Some(e) = inner.error.as_ref() {
-                    trace!("Connection closed with error");
-                    // connection gets a fake copy while the client gets the original
-                    let fake = io::Error::new(e.kind(), e.to_string());
-                    return Err(fake).into();
-                } else {
-                    trace!("Connection closed");
-                    return Ok(()).into();
-                }
-            }
-
-            // prune before getting any task for the state, to avoid getting stale.
-            inner.tasks.prune_completed();
-
-            if let Some(task) = inner.tasks.task_for_state(cur_seq, state) {
-                last_task_waker = task.task_waker();
-                match ready!(task.poll_connection(cx, &mut this.io, &mut state)) {
-                    Ok(_) => {
-                        if inner.state != State::Ready && state == State::Ready {
-                            inner.cur_seq += 1;
-                            trace!("New cur_seq: {}", inner.cur_seq);
-                        }
-                        if inner.state != state {
-                            inner.state = state;
-                            trace!("State transitioned to: {:?}", state);
-                        }
-                    }
-                    Err(err) => {
-                        trace!("Connection error: {:?}", err);
-                        inner.error = Some(err);
-                        // If we're State::Waiting for a response, the other side might
-                        // just abruptly close the connection after sending the response
-                        // header. In these cases we must delay switching to State::Closed
-                        // until we fully parsed the header.
-                        if inner.state == State::Waiting {
-                            delayed_error_waiting = true;
-                            continue;
-                        }
-                        inner.state = State::Closed;
-                        if let Some(waker) = last_task_waker.take() {
-                            waker.wake();
-                        }
-                        continue;
-                    }
-                };
-            } else {
-                // We got an error while waiting for a response body, but then proceeded to
-                // parse the body fully.
-                if delayed_error_waiting && inner.state == State::RecvBody {
-                    inner.state = State::Closed;
-                    trace!("State transitioned to: {:?}", inner.state);
-                    if let Some(waker) = last_task_waker.take() {
-                        waker.wake();
-                    }
-                    continue;
-                }
-                break Poll::Pending;
+        if let Err(err) = ready!(this.poll_drive(&mut *inner, &mut last_task_waker, cx)) {
+            inner.error = Some(err);
+            inner.state = State::Closed;
+            if let Some(waker) = last_task_waker.take() {
+                waker.wake();
             }
         }
+
+        Ok(()).into()
     }
 }
 
 trait ConnectionPoll {
-    fn poll_connection<S>(
-        &mut self,
-        cx: &mut Context,
-        io: &mut S,
-        state: &mut State,
-    ) -> Poll<io::Result<()>>
+    fn poll_connection<S>(&mut self, cx: &mut Context, io: &mut S) -> Poll<io::Result<()>>
     where
         S: AsyncRead + AsyncWrite + Unpin;
 }
 
 impl ConnectionPoll for SendReq {
-    fn poll_connection<S>(
-        &mut self,
-        cx: &mut Context,
-        io: &mut S,
-        state: &mut State,
-    ) -> Poll<io::Result<()>>
+    fn poll_connection<S>(&mut self, cx: &mut Context, io: &mut S) -> Poll<io::Result<()>>
     where
         S: AsyncRead + AsyncWrite + Unpin,
     {
@@ -143,11 +236,6 @@ impl ConnectionPoll for SendReq {
             }
             break;
         }
-        if self.end {
-            *state = State::Waiting;
-        } else {
-            *state = State::SendBody;
-        }
 
         self.info.complete = true;
 
@@ -156,12 +244,7 @@ impl ConnectionPoll for SendReq {
 }
 
 impl ConnectionPoll for SendBody {
-    fn poll_connection<S>(
-        &mut self,
-        cx: &mut Context,
-        io: &mut S,
-        state: &mut State,
-    ) -> Poll<io::Result<()>>
+    fn poll_connection<S>(&mut self, cx: &mut Context, io: &mut S) -> Poll<io::Result<()>>
     where
         S: AsyncRead + AsyncWrite + Unpin,
     {
@@ -182,10 +265,6 @@ impl ConnectionPoll for SendBody {
             waker.wake();
         }
 
-        if self.end {
-            *state = State::Waiting;
-        }
-
         self.info.complete = true;
 
         Ok(()).into()
@@ -193,12 +272,7 @@ impl ConnectionPoll for SendBody {
 }
 
 impl ConnectionPoll for RecvRes {
-    fn poll_connection<S>(
-        &mut self,
-        cx: &mut Context,
-        io: &mut S,
-        state: &mut State,
-    ) -> Poll<io::Result<()>>
+    fn poll_connection<S>(&mut self, cx: &mut Context, io: &mut S) -> Poll<io::Result<()>>
     where
         S: AsyncRead + AsyncWrite + Unpin,
     {
@@ -206,6 +280,20 @@ impl ConnectionPoll for RecvRes {
         let mut end_index = 0;
         let mut buf_index = 0;
         let mut one = [0_u8; 1];
+
+        // fix so end_index is where it needs to be
+        loop {
+            if buf_index == self.buf.len() {
+                break;
+            }
+            if self.buf[buf_index] == END_OF_HEADER[end_index] {
+                end_index += 1;
+            } else if end_index > 0 {
+                end_index = 0;
+            }
+            buf_index += 1;
+        }
+
         loop {
             if buf_index == self.buf.len() {
                 // read one more char
@@ -233,29 +321,23 @@ impl ConnectionPoll for RecvRes {
             buf_index += 1;
         }
 
-        *state = State::RecvBody;
-
         // in theory we're now have a complete header ending \r\n\r\n
-        self.task_waker.clone().wake();
+        self.end = true;
+        self.task_waker.wake_by_ref();
 
         Ok(()).into()
     }
 }
 
 impl ConnectionPoll for RecvBody {
-    fn poll_connection<S>(
-        &mut self,
-        cx: &mut Context,
-        io: &mut S,
-        state: &mut State,
-    ) -> Poll<io::Result<()>>
+    fn poll_connection<S>(&mut self, cx: &mut Context, io: &mut S) -> Poll<io::Result<()>>
     where
         S: AsyncRead + AsyncWrite + Unpin,
     {
         let cur_len = self.buf.len();
         self.buf.resize(self.read_max, 0);
         if cur_len == self.read_max && self.read_max > 0 {
-            self.task_waker.clone().wake();
+            self.task_waker.wake_by_ref();
             return Poll::Pending;
         }
 
@@ -282,33 +364,9 @@ impl ConnectionPoll for RecvBody {
 
         if amount == 0 {
             self.end = true;
-            if self.reuse_conn {
-                *state = State::Ready;
-            } else {
-                *state = State::Closed;
-            }
         }
 
         self.task_waker.clone().wake();
         Ok(()).into()
-    }
-}
-
-impl ConnectionPoll for Task {
-    fn poll_connection<S>(
-        &mut self,
-        cx: &mut Context,
-        io: &mut S,
-        state: &mut State,
-    ) -> Poll<io::Result<()>>
-    where
-        S: AsyncRead + AsyncWrite + Unpin,
-    {
-        match self {
-            Task::SendReq(t) => t.poll_connection(cx, io, state),
-            Task::SendBody(t) => t.poll_connection(cx, io, state),
-            Task::RecvRes(t) => t.poll_connection(cx, io, state),
-            Task::RecvBody(t) => t.poll_connection(cx, io, state),
-        }
     }
 }

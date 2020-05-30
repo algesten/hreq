@@ -85,7 +85,8 @@ impl Future for ResponseFuture {
                 let limiter = LimitRead::from_response(&res);
                 let recv_stream = RecvStream::new(self.inner.clone(), self.seq, limiter);
                 let (parts, _) = res.into_parts();
-                task.info.complete = true;
+                task.info.complete = true; // can be removed from enqueued tasks
+                inner.try_wake_conn();
                 Ok(http::Response::from_parts(parts, recv_stream)).into()
             } else {
                 task.task_waker = cx.waker().clone();
@@ -219,6 +220,7 @@ impl RecvReader {
             let buf = &mut task.buf;
             if buf.is_empty() {
                 if task.end {
+                    task.info.complete = true; // can now be removed from enqueued tasks
                     task.read_max = 0;
                     Ok(0).into()
                 } else {
@@ -256,9 +258,11 @@ impl RecvReader {
 pub enum State {
     /// Can accept a new request.
     Ready,
-    /// After request header is sent, and we can send a body.
+    /// After request header is sent, and we can send a body and receive a response header.
+    SendBodyAndWaiting,
+    /// If we are only waiting to send body (already done Waiting for response).
     SendBody,
-    /// Waiting to receive response header.
+    /// If we are only waiting to receive response header (send body is done).
     Waiting,
     /// After we received response header and are waiting for a body.
     RecvBody,
@@ -330,7 +334,7 @@ impl Inner {
                         panic!("Send body in state Waiting without a send_req");
                     }
                 }
-                State::SendBody => {
+                State::SendBodyAndWaiting | State::SendBody => {
                     // we are expecting more body parts
                 }
                 _ => {
