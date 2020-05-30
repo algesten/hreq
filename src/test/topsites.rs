@@ -91,3 +91,15 @@ fn get_youtube() {
     assert_eq!(200, resp.status_code());
     assert!(!resp.body_mut().read_to_vec().block().unwrap().is_empty());
 }
+
+// h1 requests went into a never ending loop. that's fixed,
+// the site still times out.
+#[test]
+fn get_pkueducn() {
+    super::test_setup();
+    let resp = http::Request::get("https://pku.edu.cn")
+        .timeout_millis(10_000)
+        .call()
+        .block();
+    assert!(resp.is_err());
+}

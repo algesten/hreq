@@ -37,30 +37,22 @@ where
             if task.end {
                 return Ok(true).into();
             }
-            match task.poll_connection(cx, &mut self.io) {
-                Poll::Pending => {
-                    // that's ok, we will go to pending by virtue of there
-                    // being no SendBody tasks.
+            if let Err(e) = ready!(task.poll_connection(cx, &mut self.io)) {
+                // If the remote side abruptly closes the connection after
+                // sending the response header, we might have a whole response
+                if task.end {
+                    inner.state = State::Closed;
+                    return Ok(true).into();
+                } else {
+                    return Err(e).into();
                 }
-                Poll::Ready(v) => {
-                    if let Err(e) = v {
-                        // If the remote side abruptly closes the connection after
-                        // sending the response header, we might have a whole response
-                        if task.end {
-                            inner.state = State::Closed;
-                            return Ok(true).into();
-                        } else {
-                            return Err(e).into();
-                        }
-                    }
-                    if task.end {
-                        // we got a complete response. this means we will
-                        // transition away from this state, either to
-                        // SendBody (if there are body chunks left to send)
-                        // or RecvBody).
-                        return Ok(true).into();
-                    }
-                }
+            }
+            if task.end {
+                // we got a complete response. this means we will
+                // transition away from this state, either to
+                // SendBody (if there are body chunks left to send)
+                // or RecvBody).
+                return Ok(true).into();
             }
         }
         Ok(false).into()
@@ -77,6 +69,8 @@ where
 
             // prune before getting any task for the state, to avoid getting stale.
             inner.tasks.prune_completed();
+
+            trace!("poll_drive in state: {:?}", inner.state);
 
             match inner.state {
                 State::Ready => {
@@ -138,14 +132,15 @@ where
                 }
                 State::Waiting => {
                     let has_response =
-                        match self.poll_try_recv_res(inner, cur_seq, last_task_waker, cx) {
-                            Poll::Pending => false,
-                            Poll::Ready(Ok(v)) => v,
-                            Poll::Ready(Err(e)) => return Err(e).into(),
+                        match ready!(self.poll_try_recv_res(inner, cur_seq, last_task_waker, cx)) {
+                            Ok(v) => v,
+                            Err(e) => return Err(e).into(),
                         };
                     if has_response {
                         // we got a response, and send body is done
                         inner.state = State::RecvBody;
+                    } else {
+                        return Poll::Pending;
                     }
                 }
                 State::RecvBody => {
