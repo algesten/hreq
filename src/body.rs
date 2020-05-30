@@ -198,7 +198,7 @@ impl Body {
     ///     .call().block().unwrap();
     /// ```
     pub fn empty() -> Self {
-        Self::new(BodyImpl::RequestEmpty, Some(0), None)
+        Self::new(BodyImpl::RequestEmpty, Some(0))
     }
 
     /// Creates a request body from a `&str` by cloning the data.
@@ -397,7 +397,7 @@ impl Body {
         R: AsyncRead + Unpin + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
-        Self::new(BodyImpl::RequestAsyncRead(boxed), length, None)
+        Self::new(BodyImpl::RequestAsyncRead(boxed), length)
     }
 
     /// Creates a request from anything implementing the (blocking) `std::io::Read` trait.
@@ -417,11 +417,11 @@ impl Body {
         R: io::Read + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
-        Self::new(BodyImpl::RequestRead(boxed), length, None)
+        Self::new(BodyImpl::RequestRead(boxed), length)
     }
 
     /// Creates a new Body
-    pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>, unfin: Option<Arc<()>>) -> Self {
+    pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>) -> Self {
         let reader = BodyReader::new(bimpl);
         let codec = BufReader::new(BodyCodec::deferred(reader));
         Body {
@@ -433,8 +433,12 @@ impl Body {
             char_codec: None,
             req_params: RequestParams::new(),
             deadline_fut: None,
-            unfinished_recs: unfin,
+            unfinished_recs: None,
         }
+    }
+
+    pub(crate) fn set_unfinished_recs(&mut self, unfin: Arc<()>) {
+        self.unfinished_recs = Some(unfin);
     }
 
     /// Tells if we know _for sure_, there is no body.

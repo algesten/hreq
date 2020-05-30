@@ -1,5 +1,5 @@
-use crate::conn_http1::send_request_http1;
-use crate::conn_http2::send_request_http2;
+use crate::body::BodyImpl;
+use crate::h1;
 use crate::h1::SendRequest as H1SendRequest;
 use crate::reqb_ext::RequestParams;
 use crate::res_ext::HeaderMapExt;
@@ -8,13 +8,21 @@ use crate::uri_ext::MethodExt;
 use crate::Body;
 use crate::Error;
 use bytes::Bytes;
+use futures_util::future::poll_fn;
+use futures_util::ready;
+use hreq_h2 as h2;
 use hreq_h2::client::SendRequest as H2SendRequest;
 use once_cell::sync::Lazy;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+const BUF_SIZE: usize = 16_384;
 
 #[derive(Clone)]
 pub enum ProtocolImpl {
@@ -136,15 +144,159 @@ impl Connection {
             req.headers()
         );
 
-        match &mut self.p {
-            ProtocolImpl::Http1(send_req) => {
-                let s = send_req.clone();
-                deadline.race(send_request_http1(s, req, unfin)).await
+        // send request against a deadline
+        let response = deadline.race(send_req(&self.p, req, unfin)).await?;
+
+        Ok(response)
+    }
+}
+
+async fn send_req(
+    proto: &ProtocolImpl,
+    req: http::Request<Body>,
+    unfin: Arc<()>,
+) -> Result<http::Response<Body>, Error> {
+    let params = req.extensions().get::<RequestParams>().unwrap().clone();
+
+    let (parts, mut body_read) = req.into_parts();
+    let req = http::Request::from_parts(parts, ());
+
+    let no_body = body_read.is_definitely_no_body();
+
+    let (res_fut, mut body_send) = proto.do_send(req, no_body).await?;
+
+    if !no_body {
+        // this buffer must be less than h2 window size
+        let mut buf = vec![0_u8; BUF_SIZE];
+
+        loop {
+            // wait for body_send to be able to receive more data
+            body_send = body_send.ready().await?;
+
+            // read more data to send
+            let amount_read = body_read.read(&mut buf[..]).await?;
+            if amount_read == 0 {
+                break;
             }
-            ProtocolImpl::Http2(send_req) => {
-                let s = send_req.clone();
-                deadline.race(send_request_http2(s, req, unfin)).await
+
+            body_send.send_data(&buf[0..amount_read]).await?;
+        }
+
+        body_send.send_end()?;
+    }
+
+    let (mut parts, mut res_body) = res_fut.await?;
+
+    parts.extensions.insert(params.clone());
+    res_body.set_unfinished_recs(unfin);
+    res_body.configure(params, &parts.headers, true);
+
+    Ok(http::Response::from_parts(parts, res_body))
+}
+
+impl ProtocolImpl {
+    // Generalised sending of request
+    async fn do_send(
+        &self,
+        req: http::Request<()>,
+        no_body: bool,
+    ) -> Result<(ResponseFuture, BodySender), Error> {
+        Ok(match self {
+            ProtocolImpl::Http1(h1) => {
+                let mut h1 = h1.clone();
+                let (fut, send_body) = h1.send_request(req, no_body)?;
+                (ResponseFuture::H1(fut), BodySender::H1(send_body))
             }
+            ProtocolImpl::Http2(h2) => {
+                let mut h2 = h2.clone().ready().await?;
+                let (fut, send_body) = h2.send_request(req, no_body)?;
+                (ResponseFuture::H2(fut), BodySender::H2(send_body))
+            }
+        })
+    }
+}
+
+/// Generalisation over response future
+enum ResponseFuture {
+    H1(h1::ResponseFuture),
+    H2(h2::client::ResponseFuture),
+}
+
+impl Future for ResponseFuture {
+    type Output = Result<(http::response::Parts, Body), Error>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        match this {
+            ResponseFuture::H1(f) => {
+                let (p, b) = ready!(Pin::new(f).poll(cx))?.into_parts();
+                let b = Body::new(BodyImpl::Http1(b), None);
+                Ok((p, b)).into()
+            }
+            ResponseFuture::H2(f) => {
+                let (p, b) = ready!(Pin::new(f).poll(cx))?.into_parts();
+                let b = Body::new(BodyImpl::Http2(b), None);
+                Ok((p, b)).into()
+            }
+        }
+    }
+}
+
+/// Generalisation over sending body request data
+enum BodySender {
+    H1(h1::SendStream),
+    H2(h2::SendStream<Bytes>),
+}
+
+impl BodySender {
+    async fn ready(self) -> Result<Self, Error> {
+        match self {
+            BodySender::H1(s) => Ok(BodySender::H1(s.ready().await?)),
+            BodySender::H2(s) => Ok(BodySender::H2(s)),
+        }
+    }
+
+    async fn send_data(&mut self, mut buf: &[u8]) -> Result<(), Error> {
+        match self {
+            BodySender::H1(s) => Ok(s.send_data(buf, false)?),
+            BodySender::H2(s) => {
+                loop {
+                    if buf.len() == 0 {
+                        break;
+                    }
+
+                    s.reserve_capacity(buf.len());
+
+                    let actual_capacity = {
+                        let cur = s.capacity();
+                        if cur > 0 {
+                            cur
+                        } else {
+                            poll_fn(|cx| s.poll_capacity(cx)).await.ok_or_else(|| {
+                                Error::Proto("Stream gone before capacity".into())
+                            })??
+                        }
+                    };
+
+                    // h2::SendStream lacks a sync or async function that allows us
+                    // to send borrowed data. This copy is unfortunate.
+                    // TODO contact h2 and ask if they would consider some kind of
+                    // async variant that takes a &mut [u8].
+                    let data = Bytes::copy_from_slice(&buf[..actual_capacity]);
+
+                    s.send_data(data, false)?;
+
+                    buf = &buf[actual_capacity..];
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    fn send_end(&mut self) -> Result<(), Error> {
+        match self {
+            BodySender::H1(s) => Ok(s.send_data(&[], true)?),
+            BodySender::H2(s) => Ok(s.send_data(Bytes::new(), true)?),
         }
     }
 }
