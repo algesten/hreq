@@ -44,7 +44,8 @@ What are we doing?
   - [ ] Max connections per host
 - [x] Cookie state in connection (cookie)
 - [x] Follow redirects
-- [ ] Expect-100 and 307/308 redirects.
+- [ ] Expect-100
+- [ ] 307/308 redirects.
 - [ ] HTTP Proxy
 - [x] Investigate why tls-api wants a Sync stream.
   - [x] Replace tls-api with with plain rustls.
