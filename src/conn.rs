@@ -43,7 +43,7 @@ impl fmt::Display for ProtocolImpl {
 pub struct Connection {
     id: usize,
     host_port: HostPort<'static>,
-    p: ProtocolImpl,
+    proto: ProtocolImpl,
     unfinished_reqs: Arc<()>,
 }
 
@@ -55,11 +55,11 @@ impl PartialEq for Connection {
 impl Eq for Connection {}
 
 impl Connection {
-    pub(crate) fn new(host_port: HostPort<'static>, p: ProtocolImpl) -> Self {
+    pub(crate) fn new(host_port: HostPort<'static>, proto: ProtocolImpl) -> Self {
         Connection {
             id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             host_port,
-            p,
+            proto,
             unfinished_reqs: Arc::new(()),
         }
     }
@@ -73,7 +73,7 @@ impl Connection {
     }
 
     pub(crate) fn is_http2(&self) -> bool {
-        match self.p {
+        match self.proto {
             ProtocolImpl::Http1(_) => false,
             ProtocolImpl::Http2(_) => true,
         }
@@ -137,7 +137,7 @@ impl Connection {
 
         trace!(
             "{} {} {} {} {:?}",
-            self.p,
+            self.proto,
             self.host_port(),
             req.method(),
             req.uri(),
@@ -145,7 +145,7 @@ impl Connection {
         );
 
         // send request against a deadline
-        let response = deadline.race(send_req(&self.p, req, unfin)).await?;
+        let response = deadline.race(send_req(&self.proto, req, unfin)).await?;
 
         Ok(response)
     }
