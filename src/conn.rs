@@ -163,13 +163,24 @@ async fn send_req(
 
     let no_body = body_read.is_definitely_no_body();
 
-    let (res_fut, mut body_send) = proto.do_send(req, no_body).await?;
+    let (mut res_fut, mut body_send) = proto.do_send(req, no_body).await?;
+    let mut early_response = None;
 
     if !no_body {
         // this buffer must be less than h2 window size
         let mut buf = vec![0_u8; BUF_SIZE];
 
         loop {
+            match TryOnceFuture(&mut res_fut).await {
+                TryOnce::Pending => {
+                    // early response did not happen, keep sending body
+                }
+                TryOnce::Ready(v) => {
+                    early_response = Some(v);
+                    break;
+                }
+            }
+
             // wait for body_send to be able to receive more data
             body_send = body_send.ready().await?;
 
@@ -185,7 +196,11 @@ async fn send_req(
         body_send.send_end()?;
     }
 
-    let (mut parts, mut res_body) = res_fut.await?;
+    let (mut parts, mut res_body) = if let Some(res) = early_response {
+        res?
+    } else {
+        res_fut.await?
+    };
 
     parts.extensions.insert(params.clone());
     res_body.set_unfinished_recs(unfin);
@@ -299,4 +314,31 @@ impl BodySender {
             BodySender::H2(s) => Ok(s.send_data(Bytes::new(), true)?),
         }
     }
+}
+
+/// When polling the wrapped future will never go Poll::Pending.
+struct TryOnceFuture<F>(F);
+
+impl<F> Future for TryOnceFuture<F>
+where
+    Self: Unpin,
+    F: Future + Unpin,
+{
+    type Output = TryOnce<F>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.0).poll(cx) {
+            Poll::Pending => TryOnce::Pending,
+            Poll::Ready(v) => TryOnce::Ready(v),
+        }
+        .into()
+    }
+}
+
+enum TryOnce<F>
+where
+    F: Future,
+{
+    Pending,
+    Ready(F::Output),
 }
