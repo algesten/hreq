@@ -28,6 +28,23 @@ test_h1_h2! {
         }
     }
 
+    fn sane_headers_with_port() -> Result<(), Error> {
+        |bld: http::request::Builder| {
+            let req = bld
+                .uri("https://my-fine-host.com:234/path")
+                .body(().into())?;
+            let (server_req, _client_res, _client_bytes) = run_server(req, "Ok", |tide_req| {
+                async move { tide_req }
+            })?;
+            if server_req.version() == http::Version::HTTP_2 {
+                // :authority and :scheme seems to never make it through.
+            } else {
+                assert_eq!(server_req.header("host"), Some("my-fine-host.com:234"));
+            }
+            Ok(())
+        }
+    }
+
     fn sane_headers_with_size0() -> Result<(), Error> {
         |bld: http::request::Builder| {
             let req = bld

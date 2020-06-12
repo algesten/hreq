@@ -28,9 +28,28 @@ pub fn write_http11_req<X>(req: &http::Request<X>, buf: &mut [u8]) -> Result<usi
         }
     }
     if host.is_none() {
+        let default_port: u16 = match req.uri().scheme_str() {
+            Some("https") => 443,
+            Some("http") => 80,
+            _ => 0,
+        };
+        let port = match req.uri().port_u16() {
+            Some(p) => {
+                if p == default_port {
+                    0
+                } else {
+                    p
+                }
+            }
+            _ => 0,
+        };
         // fall back on uri host
         if let Some(h) = req.uri().host() {
-            write!(w, "host: {}\r\n", h)?;
+            write!(w, "host: {}", h)?;
+            if port != 0 {
+                write!(w, ":{}", port)?;
+            }
+            write!(w, "\r\n")?;
         }
     }
 
