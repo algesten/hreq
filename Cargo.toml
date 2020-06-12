@@ -44,11 +44,11 @@ fuzz = []
 
 [dependencies]
 bytes = "0.5"
-cookie = { version = "0.13", features = ["percent-encode"] }
+cookie = { version = "0.14", features = ["percent-encode"] }
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
-hreq-h2 = { version = "0.2.5", path = "../hreq-h2" }
+hreq-h2 = { version = "0.2.5" }
 http = "0.2"
 httparse = "1"
 log = "0.4"
@@ -60,7 +60,7 @@ publicsuffix = { default-features = false, version = "1.5.4" }
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 # keep in sync with time brought in by cookie
-time = "=0.2.9"
+time = "=0.2.16"
 
 ## smol
 smol-lib = { package="smol", version = "0.1", optional = true }

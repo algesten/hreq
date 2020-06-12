@@ -36,7 +36,7 @@ impl Cookies {
             } else {
                 Duration::days(DEFAULT_COOKIE_MAX_AGES_DAYS)
             };
-            let exp = OffsetDateTime::now() + max;
+            let exp = OffsetDateTime::now_utc() + max;
             cookie.set_expires(Some(exp))
         }
         let jar = self.domains.entry(domain).or_insert_with(CookieJar::new);
@@ -47,7 +47,7 @@ impl Cookies {
         let mut ret = vec![];
 
         let is_secure = uri.is_secure();
-        let now = OffsetDateTime::now();
+        let now = OffsetDateTime::now_utc();
 
         // hold current host name. will go "a.b.com", "b.com", "com"
         let mut cur = Some(uri.clone());
