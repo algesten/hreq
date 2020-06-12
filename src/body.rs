@@ -462,6 +462,10 @@ impl Body {
         self.content_typ
     }
 
+    pub(crate) fn is_configurable(&self) -> bool {
+        !self.has_read
+    }
+
     /// Configures the codecs in the body as part of the request or response.
     ///
     /// When calling this "content-encoding" and "content-type" must be settled.

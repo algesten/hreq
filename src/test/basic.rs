@@ -76,3 +76,17 @@ fn missing_scheme() {
     let err = res.unwrap_err();
     println!("{:?}", err);
 }
+
+// #[test]
+// fn post_307() {
+//     super::test_setup();
+//     let data = super::DataGenerator::new(10 * 1024 * 1024);
+//     http::Request::post("http://localhost:3000/1")
+//         // .force_http2(true)
+//         .redirect_body_buffer(10 * 1024 * 1024)
+//         .header("content-type", "application/json")
+//         .send(crate::Body::from_sync_read(data, None))
+//         // .send(r#"{"foo": 43}"#)
+//         .block()
+//         .unwrap();
+// }

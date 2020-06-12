@@ -86,6 +86,7 @@ impl Connection {
     pub async fn send_request(
         &mut self,
         req: http::Request<Body>,
+        body_buffer: &mut BodyBuf,
     ) -> Result<http::Response<Body>, Error> {
         // up the arc-counter on unfinished reqs
         let unfin = self.unfinished_reqs.clone();
@@ -96,7 +97,9 @@ impl Connection {
         let deadline = params.deadline();
 
         // resolve deferred body codecs because content-encoding and content-type are settled.
-        body.configure(params.clone(), &parts.headers, false);
+        if body.is_configurable() {
+            body.configure(params.clone(), &parts.headers, false);
+        }
 
         if let Some(len) = body.content_encoded_length() {
             // the body indicates a length (for sure).
@@ -145,15 +148,18 @@ impl Connection {
         );
 
         // send request against a deadline
-        let response = deadline.race(send_req(&self.proto, req, unfin)).await?;
+        let response = deadline
+            .race(send_req(req, body_buffer, &self.proto, unfin))
+            .await?;
 
         Ok(response)
     }
 }
 
 async fn send_req(
-    proto: &ProtocolImpl,
     req: http::Request<Body>,
+    body_buffer: &mut BodyBuf,
+    proto: &ProtocolImpl,
     unfin: Arc<()>,
 ) -> Result<http::Response<Body>, Error> {
     let params = req.extensions().get::<RequestParams>().unwrap().clone();
@@ -161,7 +167,7 @@ async fn send_req(
     let (parts, mut body_read) = req.into_parts();
     let req = http::Request::from_parts(parts, ());
 
-    let no_body = body_read.is_definitely_no_body();
+    let no_body = body_read.is_definitely_no_body() && body_buffer.len() == 0;
 
     let (mut res_fut, mut body_send) = proto.do_send(req, no_body).await?;
     let mut early_response = None;
@@ -169,6 +175,7 @@ async fn send_req(
     if !no_body {
         // this buffer must be less than h2 window size
         let mut buf = vec![0_u8; BUF_SIZE];
+        let mut use_body_buf = true;
 
         loop {
             match TryOnceFuture(&mut res_fut).await {
@@ -184,14 +191,35 @@ async fn send_req(
             // wait for body_send to be able to receive more data
             body_send = body_send.ready().await?;
 
-            // read more data to send
-            let amount_read = body_read.read(&mut buf[..]).await?;
+            let mut amount_read = 0;
+
+            // use buffered body (from potential 307/308 redirect)
+            if use_body_buf {
+                let n = body_buffer.read(&mut buf[..]);
+                if n == 0 {
+                    // no more buffer to use
+                    use_body_buf = false;
+                } else {
+                    amount_read = n;
+                }
+            }
+
+            // read new body data
+            if !use_body_buf {
+                let n = body_read.read(&mut buf[..]).await?;
+                body_buffer.append(&buf[..n]);
+                amount_read = n;
+            }
+
             if amount_read == 0 {
                 break;
             }
 
             body_send.send_data(&buf[0..amount_read]).await?;
         }
+
+        // pass the body back with the buffer
+        body_buffer.return_body = Some(body_read);
 
         body_send.send_end()?;
     }
@@ -341,4 +369,74 @@ where
 {
     Pending,
     Ready(F::Output),
+}
+
+pub struct BodyBuf {
+    vec: Option<Vec<u8>>,
+    read_idx: usize,
+    return_body: Option<Body>,
+}
+
+impl BodyBuf {
+    pub fn new(size: usize) -> BodyBuf {
+        let vec = if size == 0 {
+            trace!("No BodyBuf");
+            None
+        } else {
+            trace!("BodyBuf with capacity: {}", size);
+            Some(Vec::with_capacity(size))
+        };
+        BodyBuf {
+            vec,
+            read_idx: 0,
+            return_body: None,
+        }
+    }
+
+    pub fn reset(&mut self, keep_data: bool) -> Option<Body> {
+        trace!(
+            "BodyBuf reset keep_data: {}, len: {}",
+            keep_data,
+            self.len()
+        );
+        self.read_idx = 0;
+        if keep_data {
+            self.return_body.take()
+        } else {
+            if let Some(vec) = &mut self.vec {
+                vec.resize(0, 0);
+            }
+            self.return_body = None;
+            None
+        }
+    }
+
+    fn read(&mut self, buf: &mut [u8]) -> usize {
+        if let Some(vec) = &mut self.vec {
+            let max = buf.len().min(vec.len() - self.read_idx);
+            trace!("BodyBuf read: {}", max);
+            (&mut buf[0..max]).copy_from_slice(&vec[self.read_idx..(self.read_idx + max)]);
+            self.read_idx += max;
+            max
+        } else {
+            0
+        }
+    }
+
+    fn append(&mut self, buf: &[u8]) {
+        if let Some(vec) = &mut self.vec {
+            let remaining = vec.capacity() - vec.len();
+            if buf.len() > remaining {
+                self.vec = None;
+                debug!("No capacity left in BodyBuf");
+                return;
+            }
+            vec.extend_from_slice(buf);
+            trace!("BodyBuf appended: {}/{}", vec.len(), vec.capacity());
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.vec.as_ref().map(|v| v.len()).unwrap_or(0)
+    }
 }

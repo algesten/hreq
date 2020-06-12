@@ -289,6 +289,60 @@ where
     /// ```
     fn content_decode(self, enabled: bool) -> Self;
 
+    /// Buffer size to enable resending body on 307 and 308 redirects.
+    ///
+    /// A POST/PUT request encountering 301 and 302 redirects will by
+    /// de-facto standard follow the redirect with GET + empty body
+    /// instead of the original method.
+    ///
+    /// The 307 and 308 responses are explicitly for preserving the
+    /// original request method and they should also re-send the
+    /// original body to the redirected location.
+    ///
+    /// For body re-send hreq must be able to repeat the body data sent
+    /// when encountering a 307/308. However hreq can't hold on to
+    /// indefinitely large amounts of body data _just in case_ it gets
+    /// one of these redirect codes.
+    ///
+    /// This parameter sets how much body data we should retain in memory
+    /// in case of a re-send before "letting go" and not being able to
+    /// respond with a body to 307/308.
+    ///
+    /// The default value is `0` because solutions relying on 307/308 are
+    /// not the norm and we don't want the extra memory footprint for all
+    /// cases where it is not used.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// Request::post("https://my-redirect-server/")
+    ///     .redirect_body_buffer(1024) // up to 1kb buffer for resend
+    ///     .send("This body will be re-sent on 307")
+    ///     .block().unwrap();
+    /// ```
+    ///
+    /// hreq does a "best effort" in not using up the entire buffer.
+    /// Imagine sending a 2GB large file, the remote server would
+    /// most likely respond with 307/308 long before the entire body has
+    /// been uploaded.
+    ///
+    /// This can further be improved using by setting a `Expect: 100-continue`
+    /// header, which would build in a small delay before sending the body
+    /// letting the server respond with the redirect first.
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    ///
+    /// let file = std::fs::File::open("my-big-movie.m4v").unwrap();
+    ///
+    /// Request::post("https://my-redirect-server/")
+    ///     .redirect_body_buffer(1024 * 1024) // up to 1mb buffer for resend
+    ///     .header("expect", "100-continue")  // delay for 100-continue or redirect
+    ///     .send(file)
+    ///     .block().unwrap();
+    /// ```
+    fn redirect_body_buffer(self, size: usize) -> Self;
+
     /// Override the host, port and TLS setting of where to connect to.
     ///
     /// This is mostly used for testing.
@@ -507,6 +561,12 @@ impl RequestBuilderExt for request::Builder {
         })
     }
 
+    fn redirect_body_buffer(self, size: usize) -> Self {
+        with_request_params(self, |params| {
+            params.redirect_body_buffer = size;
+        })
+    }
+
     fn with_override(self, host: &str, port: u16, tls: bool) -> Self {
         with_request_params(self, |params| {
             params.with_override = Some(Arc::new(HostPort::new(host, port, tls)));
@@ -554,6 +614,7 @@ pub struct RequestParams {
     pub charset_decode_target: Option<&'static Encoding>,
     pub content_encode: bool,
     pub content_decode: bool,
+    pub redirect_body_buffer: usize,
     pub with_override: Option<Arc<HostPort<'static>>>,
 }
 

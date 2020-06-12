@@ -1,6 +1,7 @@
 //! Connection pooling, redirects, cookies etc.
 
 use crate::async_impl::AsyncRuntime;
+use crate::conn::BodyBuf;
 use crate::connect;
 use crate::cookies::Cookies;
 use crate::reqb_ext::resolve_hreq_ext;
@@ -204,6 +205,9 @@ impl Agent {
 
         let params = req.extensions().get::<RequestParams>().unwrap().clone();
 
+        // Buffer of body data so we can handle resending the body on 307/308 redirects.
+        let mut body_buffer = BodyBuf::new(params.redirect_body_buffer);
+
         // the request should be time limited regardless of retries. the entire do_send()
         // is wrapped in a ticking timer...
         let deadline = params.deadline();
@@ -211,7 +215,9 @@ impl Agent {
         // for lifetime reasons it's easier to handle the cookie storage separately
         let mut cookies = self.cookies.take();
 
-        let ret = deadline.race(self.do_send(req, params, &mut cookies)).await;
+        let ret = deadline
+            .race(self.do_send(req, params, &mut cookies, &mut body_buffer))
+            .await;
 
         self.cookies = cookies;
 
@@ -223,6 +229,7 @@ impl Agent {
         req: http::Request<Body>,
         params: RequestParams,
         cookies: &mut Option<Cookies>,
+        body_buffer: &mut BodyBuf,
     ) -> Result<http::Response<Body>, Error> {
         trace!("Agent {} {}", req.method(), req.uri());
 
@@ -306,7 +313,7 @@ impl Agent {
 
             debug!("{} {}", req.method(), req.uri());
 
-            match conn.send_request(req).await {
+            match conn.send_request(req, body_buffer).await {
                 Ok(mut res) => {
                     // squirrel away cookies (also in redirects)
                     if use_cookies {
@@ -347,11 +354,12 @@ impl Agent {
                         parts.uri = parts.uri.parse_relative(location)?;
                         next_req = http::Request::from_parts(parts, body);
 
+                        // 307/308 keeps resends the body data, if the buffer is big enough.
                         let code = res.status_code();
-                        if code > 303 {
-                            // TODO fix 307 and 308 using Expect-100 mechanic.
-                            warn!("Unhandled redirection status: {} {}", code, location);
-                            break Ok(res);
+                        let keep_data = code > 303;
+                        if let Some(body) = body_buffer.reset(keep_data) {
+                            let (parts, _) = next_req.into_parts();
+                            next_req = http::Request::from_parts(parts, body);
                         }
 
                         // exhaust the previous body before following the redirect.
