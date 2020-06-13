@@ -26,7 +26,9 @@ use std::task::{Context, Poll};
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
 
 const BUF_SIZE: usize = 16_384;
-const CONTENT_TYPE_JSON: &str = "application/json; charset=utf-8";
+const CT_TEXT: &str = "text/plain; charset=utf-8";
+const CT_BIN: &str = "application/octet-stream";
+const CT_JSON: &str = "application/json; charset=utf-8";
 
 /// Body of an http request or response.
 ///
@@ -198,7 +200,7 @@ impl Body {
     ///     .call().block().unwrap();
     /// ```
     pub fn empty() -> Self {
-        Self::new(BodyImpl::RequestEmpty, Some(0))
+        Self::new(BodyImpl::RequestEmpty, Some(0)).ctype(CT_TEXT)
     }
 
     /// Creates a request body from a `&str` by cloning the data.
@@ -226,7 +228,7 @@ impl Body {
     /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Self {
-        Self::from_string(text.to_owned())
+        Self::from_string(text.to_owned()).ctype(CT_TEXT)
     }
 
     /// Creates a request body from a `String`.
@@ -253,7 +255,7 @@ impl Body {
     ///     .send("Hello world".to_string()).block().unwrap();
     /// ```
     pub fn from_string(text: String) -> Self {
-        let mut new = Self::from_vec(text.into_bytes());
+        let mut new = Self::from_vec(text.into_bytes()).ctype(CT_TEXT);
         // any string source is definitely UTF-8
         new.source_enc = Some(encoding_rs::UTF_8);
         new
@@ -287,7 +289,7 @@ impl Body {
     ///     .send(&data[..]).block().unwrap();
     /// ```
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        Self::from_vec(bytes.to_owned())
+        Self::from_vec(bytes.to_owned()).ctype(CT_BIN)
     }
 
     /// Creates a request body from a `Vec<u8>`.
@@ -315,7 +317,7 @@ impl Body {
     /// ```
     pub fn from_vec(bytes: Vec<u8>) -> Self {
         let len = bytes.len() as u64;
-        Self::from_sync_read(io::Cursor::new(bytes), Some(len))
+        Self::from_sync_read(io::Cursor::new(bytes), Some(len)).ctype(CT_BIN)
     }
 
     /// Creates a request body from a `std::fs::File`.
@@ -350,7 +352,7 @@ impl Body {
     pub fn from_file(file: std::fs::File) -> Self {
         let len = file.metadata().ok().map(|m| m.len());
         let async_file = tokio_lib::fs::File::from_std(file);
-        Body::from_async_read(crate::tokio::from_tokio(async_file), len)
+        Body::from_async_read(crate::tokio::from_tokio(async_file), len).ctype(CT_BIN)
     }
 
     /// Creates a body from a JSON encodable type.
@@ -379,9 +381,7 @@ impl Body {
     /// ```
     pub fn from_json<B: Serialize + ?Sized>(json: &B) -> Self {
         let vec = serde_json::to_vec(json).expect("Failed to encode JSON");
-        let mut body = Self::from_vec(vec);
-        body.content_typ = Some(CONTENT_TYPE_JSON);
-        body
+        Self::from_vec(vec).ctype(CT_JSON)
     }
 
     /// Creates a request from anything implementing the `AsyncRead` trait.
@@ -397,7 +397,7 @@ impl Body {
         R: AsyncRead + Unpin + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
-        Self::new(BodyImpl::RequestAsyncRead(boxed), length)
+        Self::new(BodyImpl::RequestAsyncRead(boxed), length).ctype(CT_BIN)
     }
 
     /// Creates a request from anything implementing the (blocking) `std::io::Read` trait.
@@ -417,7 +417,7 @@ impl Body {
         R: io::Read + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
-        Self::new(BodyImpl::RequestRead(boxed), length)
+        Self::new(BodyImpl::RequestRead(boxed), length).ctype(CT_BIN)
     }
 
     /// Creates a new Body
@@ -435,6 +435,11 @@ impl Body {
             deadline_fut: None,
             unfinished_recs: None,
         }
+    }
+
+    fn ctype(mut self, c: &'static str) -> Self {
+        self.content_typ = Some(c);
+        self
     }
 
     pub(crate) fn set_unfinished_recs(&mut self, unfin: Arc<()>) {
