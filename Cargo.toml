@@ -44,7 +44,7 @@ fuzz = []
 
 [dependencies]
 bytes = "0.5"
-cookie = { version = "0.14", features = ["percent-encode"] }
+cookie = { version = "0.14", default-features = false, features = ["percent-encode"] }
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
