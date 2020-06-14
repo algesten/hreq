@@ -333,6 +333,7 @@ mod deadline;
 mod either;
 mod error;
 mod h1;
+mod head_ext;
 mod proto;
 mod psl;
 mod req_ext;

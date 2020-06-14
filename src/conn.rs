@@ -1,8 +1,8 @@
 use crate::body::BodyImpl;
 use crate::h1;
 use crate::h1::SendRequest as H1SendRequest;
+use crate::head_ext::HeaderMapExt;
 use crate::reqb_ext::RequestParams;
-use crate::res_ext::HeaderMapExt;
 use crate::uri_ext::HostPort;
 use crate::uri_ext::MethodExt;
 use crate::Body;

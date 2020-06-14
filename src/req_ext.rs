@@ -1,6 +1,6 @@
 //! Extension trait for `http::request::Request`
 
-use crate::res_ext::HeaderMapExt;
+use crate::head_ext::HeaderMapExt;
 use crate::Agent;
 use crate::Body;
 use crate::Error;

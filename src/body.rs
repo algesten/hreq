@@ -2,8 +2,8 @@
 
 use crate::charset::CharCodec;
 use crate::h1::RecvStream as H1RecvStream;
+use crate::head_ext::HeaderMapExt;
 use crate::reqb_ext::RequestParams;
-use crate::res_ext::HeaderMapExt;
 use crate::AsyncRead;
 use crate::Error;
 use bytes::Bytes;
