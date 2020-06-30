@@ -77,7 +77,7 @@ async-compression = { version = "0.3", default-features = false, features = ["gz
 ## tls
 rustls = { version = "0.17.0", default-features = false, features = [], optional = true }
 webpki = { version = "0.21", optional = true }
-webpki-roots = { version = "0.19", optional = true }
+webpki-roots = { version = "0.20", optional = true }
 
 [dev-dependencies]
 pretty_env_logger = "0.4"
