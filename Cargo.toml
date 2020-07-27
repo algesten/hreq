@@ -85,5 +85,5 @@ env_logger = "0.7"
 serde_derive = "1"
 tide = "0.6"
 async-std-lib = { package = "async-std", version = "1", features = ["unstable"] }
-paste = "0.1"
+paste = "1.0"
 rand = "0.7"
