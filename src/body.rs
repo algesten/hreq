@@ -1,9 +1,8 @@
 //! Request and response body. content-encoding, charset etc.
 
 use crate::charset::CharCodec;
-use crate::h1::RecvStream as H1RecvStream;
 use crate::head_ext::HeaderMapExt;
-use crate::reqb_ext::RequestParams;
+use crate::params::HReqParams;
 use crate::AsyncRead;
 use crate::Error;
 use bytes::Bytes;
@@ -11,6 +10,7 @@ use encoding_rs::Encoding;
 use futures_util::future::poll_fn;
 use futures_util::io::BufReader;
 use futures_util::ready;
+use hreq_h1::RecvStream as H1RecvStream;
 use hreq_h2::RecvStream as H2RecvStream;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -32,9 +32,9 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 
 /// Body of an http request or response.
 ///
-/// # Request body
+/// # Creating a body
 ///
-/// Request bodies are created either by using a constructor function, or the `Into` trait. The
+/// Bodies are created either by using a constructor function, or the `Into` trait. The
 /// into trait can be used where rust knows the result should be `Body` such as in the request
 /// builder `.send()`.
 ///
@@ -106,9 +106,9 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 ///
 /// The only supported algorithm is `gzip`.
 ///
-/// # Response body
+/// # Reading a body
 ///
-/// hreq provides a number of ways to read the response.
+/// hreq provides a number of ways to read the contents of a body.
 ///
 ///   * [`Body.read()`]
 ///   * [`Body.read_to_vec()`]
@@ -143,7 +143,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 ///
 /// The wanted charset is assumed to be `utf-8` unless changed by [`charset_decode_target`].
 ///
-/// The function can be disabled by using [`charsed_decode`].
+/// The function can be disabled by using [`charset_decode`].
 ///
 /// ## compression
 ///
@@ -167,10 +167,9 @@ pub struct Body {
     codec: BufReader<BodyCodec>,
     length: Option<u64>, // incoming length if given with reader
     content_typ: Option<&'static str>,
-    source_enc: Option<&'static Encoding>,
+    override_source_enc: Option<&'static Encoding>,
     has_read: bool,
     char_codec: Option<CharCodec>,
-    req_params: RequestParams,
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
 }
@@ -203,9 +202,9 @@ impl Body {
         Self::new(BodyImpl::RequestEmpty, Some(0)).ctype(CT_TEXT)
     }
 
-    /// Creates a request body from a `&str` by cloning the data.
+    /// Creates a body from a `&str` by cloning the data.
     ///
-    /// The request will have a `content-length` header unless compression or
+    /// Will automatically set a `content-length` header unless compression or
     /// chunked encoding is used.
     ///
     /// # Examples
@@ -231,9 +230,9 @@ impl Body {
         Self::from_string(text.to_owned()).ctype(CT_TEXT)
     }
 
-    /// Creates a request body from a `String`.
+    /// Creates a body from a `String`.
     ///
-    /// The request will have a `content-length` header unless compression or
+    /// Will automatically set a `content-length` header unless compression or
     /// chunked encoding is used.
     ///
     /// # Examples
@@ -257,13 +256,13 @@ impl Body {
     pub fn from_string(text: String) -> Self {
         let mut new = Self::from_vec(text.into_bytes()).ctype(CT_TEXT);
         // any string source is definitely UTF-8
-        new.source_enc = Some(encoding_rs::UTF_8);
+        new.override_source_enc = Some(encoding_rs::UTF_8);
         new
     }
 
-    /// Creates a request body from a `&[u8]` by cloning the data.
+    /// Creates a body from a `&[u8]` by cloning the data.
     ///
-    /// The request will have a `content-length` header unless compression or
+    /// Will automatically set a `content-length` header unless compression or
     /// chunked encoding is used.
     ///
     /// # Examples
@@ -292,9 +291,9 @@ impl Body {
         Self::from_vec(bytes.to_owned()).ctype(CT_BIN)
     }
 
-    /// Creates a request body from a `Vec<u8>`.
+    /// Creates a body from a `Vec<u8>`.
     ///
-    /// The request will have a `content-length` header unless compression or
+    /// Will automatically set a `content-length` header unless compression or
     /// chunked encoding is used.
     ///
     /// # Examples
@@ -320,7 +319,7 @@ impl Body {
         Self::from_sync_read(io::Cursor::new(bytes), Some(len)).ctype(CT_BIN)
     }
 
-    /// Creates a request body from a `std::fs::File`.
+    /// Creates a body from a `std::fs::File`.
     ///
     /// Despite the `std` origins, hreq will send this efficiently by reading
     /// the file in a non-blocking way.
@@ -357,8 +356,7 @@ impl Body {
 
     /// Creates a body from a JSON encodable type.
     ///
-    /// This also sets the `content-type` and `content-length` unless you override it in the
-    /// request builder.
+    /// This also sets the `content-type` and `content-length` headers.
     ///
     /// # Example
     ///
@@ -384,10 +382,10 @@ impl Body {
         Self::from_vec(vec).ctype(CT_JSON)
     }
 
-    /// Creates a request from anything implementing the `AsyncRead` trait.
+    /// Creates a body from anything implementing the `AsyncRead` trait.
     ///
-    /// This is a very efficient way of sending request bodies since the
-    /// content will be streamed through hreq without taking up much memory.
+    /// This is a very efficient way of sending bodies since the content
+    //  will be streamed through hreq without taking up much memory.
     ///
     /// The `content-length` header will be set depending on whether a
     /// `length` is provided. Combinations of charset and compression might
@@ -400,7 +398,7 @@ impl Body {
         Self::new(BodyImpl::RequestAsyncRead(boxed), length).ctype(CT_BIN)
     }
 
-    /// Creates a request from anything implementing the (blocking) `std::io::Read` trait.
+    /// Creates a body from anything implementing the (blocking) `std::io::Read` trait.
     ///
     /// Might block the async runtime, so whether using this is a good idea depends on
     /// circumstances. If the `Read` is just an `std::io::Cursor` over some memory or
@@ -428,10 +426,9 @@ impl Body {
             codec,
             length,
             content_typ: None,
-            source_enc: None,
+            override_source_enc: None,
             has_read: false,
             char_codec: None,
-            req_params: RequestParams::new(),
             deadline_fut: None,
             unfinished_recs: None,
         }
@@ -449,6 +446,11 @@ impl Body {
     /// Tells if we know _for sure_, there is no body.
     pub(crate) fn is_definitely_no_body(&self) -> bool {
         self.length.map(|l| l == 0).unwrap_or(false)
+    }
+
+    /// Tells if we know _for sure_, there is a body. Sized or unsized.
+    pub(crate) fn is_definitely_a_body(&self) -> bool {
+        self.length.map(|l| l > 0).unwrap_or(true)
     }
 
     /// Tells the length of the body _with content encoding_. This could
@@ -471,30 +473,41 @@ impl Body {
         !self.has_read
     }
 
+    /// Undo the effects of configure()
+    #[cfg(feature = "server")]
+    pub(crate) fn unconfigure(self) -> Self {
+        let reader = self.codec.into_inner().into_inner();
+        Body {
+            codec: BufReader::new(BodyCodec::Deferred(Some(reader))),
+            char_codec: None,
+            ..self
+        }
+    }
+
     /// Configures the codecs in the body as part of the request or response.
     ///
     /// When calling this "content-encoding" and "content-type" must be settled.
     #[allow(clippy::collapsible_if)]
     pub(crate) fn configure(
         &mut self,
-        req_params: RequestParams,
+        params: &HReqParams,
         headers: &http::header::HeaderMap,
-        is_response: bool,
+        is_incoming: bool,
     ) {
         if self.has_read {
             panic!("configure after body started reading");
         }
 
-        self.req_params = req_params;
+        self.deadline_fut = Some(params.deadline().delay_fut());
 
         let mut new_codec = None;
         if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
             if let Some(reader) = reader.take() {
-                let use_enc = !is_response && self.req_params.content_encode
-                    || is_response && self.req_params.content_decode;
+                let use_enc =
+                    !is_incoming && params.content_encode || is_incoming && params.content_decode;
                 new_codec = if use_enc {
                     let encoding = headers.get_str("content-encoding");
-                    Some(BodyCodec::from_encoding(reader, encoding, is_response))
+                    Some(BodyCodec::from_encoding(reader, encoding, is_incoming))
                 } else {
                     Some(BodyCodec::Pass(reader))
                 };
@@ -506,12 +519,28 @@ impl Body {
             let _ = mem::replace(self.codec.get_mut(), new_codec);
         }
 
+        let charset_config = if is_incoming {
+            &params.charset_rx
+        } else {
+            &params.charset_tx
+        };
+
         // TODO sniff charset from html pages like
         // <meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
-        if !is_response && self.req_params.charset_encode
-            || is_response && self.req_params.charset_decode
+        if let Some((from, to)) =
+            charset_config.resolve(is_incoming, headers, self.override_source_enc)
         {
-            self.configure_charset_codec(headers, is_response);
+            // don't use a codec if this is pass-thru
+            if from == to {
+                trace!("Charset codec pass through: {:?}", from);
+            } else {
+                self.char_codec = Some(CharCodec::new(from, to));
+                trace!(
+                    "Charset codec ({}): {:?}",
+                    if is_incoming { "incoming" } else { "outgoing" },
+                    self.char_codec
+                );
+            }
         }
     }
 
@@ -524,42 +553,6 @@ impl Body {
                 mem::replace(self.codec.get_mut(), new_codec);
             }
         }
-    }
-
-    /// Configure the charset encoding according to headers and user preference.
-    fn configure_charset_codec(
-        &mut self,
-        headers: &http::header::HeaderMap,
-        is_response: bool,
-    ) -> Option<()> {
-        let charset_str = charset_from_headers(headers)?;
-        let charset = Encoding::for_label(charset_str.as_bytes())?;
-        let (from, to) = if is_response {
-            let to = self
-                .req_params
-                // user set target encoding
-                .charset_decode_target
-                // default is UTF-8
-                .unwrap_or(encoding_rs::UTF_8);
-            (charset, to)
-        } else {
-            let from = self
-                // the source_enc on the body overrides that of the req_params.
-                // for instance a String source will always be UTF-8.
-                .source_enc
-                // user set source encoding
-                .or(self.req_params.charset_encode_source)
-                // default is UTF_8
-                .unwrap_or(encoding_rs::UTF_8);
-            (from, charset)
-        };
-        self.char_codec = Some(CharCodec::new(from, to));
-        trace!(
-            "Charset codec ({}): {:?}",
-            if is_response { "response" } else { "request" },
-            self.char_codec
-        );
-        None
     }
 
     /// Read some bytes from this body into the specified buffer,
@@ -734,9 +727,21 @@ impl BodyCodec {
         BodyCodec::Deferred(Some(reader))
     }
 
-    fn from_encoding(reader: BodyReader, encoding: Option<&str>, is_decode: bool) -> Self {
-        trace!("Body codec: {:?}", encoding);
-        match (encoding, is_decode) {
+    #[cfg(feature = "server")]
+    fn into_inner(self) -> BodyReader {
+        match self {
+            BodyCodec::Deferred(_) => panic!("into_inner() on Deferred"),
+            BodyCodec::Pass(b) => b,
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipDecoder(z) => z.into_inner().into_inner(),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipEncoder(z) => z.into_inner().into_inner(),
+        }
+    }
+
+    fn from_encoding(reader: BodyReader, encoding: Option<&str>, is_incoming: bool) -> Self {
+        trace!("Body codec from encoding: {:?}", encoding);
+        match (encoding, is_incoming) {
             (None, _) => BodyCodec::Pass(reader),
             #[cfg(feature = "gzip")]
             (Some("gzip"), true) => {
@@ -849,7 +854,7 @@ impl AsyncRead for BodyReader {
                     return Err(e).into();
                 }
             },
-            BodyImpl::Http1(recv) => ready!(recv.poll_read(cx, buf))?,
+            BodyImpl::Http1(recv) => ready!(Pin::new(recv).poll_read(cx, buf))?,
             BodyImpl::Http2(recv) => {
                 if let Some(data) = ready!(recv.poll_data(cx)) {
                     let data = data.map_err(|e| {
@@ -936,12 +941,15 @@ impl AsyncRead for Body {
         if !this.has_read {
             this.has_read = true;
         }
-        if this.deadline_fut.is_none() {
-            this.deadline_fut = Some(this.req_params.deadline().delay_fut());
+
+        // use deadline if it's present
+        let deadl = this.deadline_fut.as_mut();
+        if let Some(deadl) = deadl {
+            if let Poll::Ready(err) = deadl.as_mut().poll(cx) {
+                return Poll::Ready(Err(err));
+            }
         }
-        if let Poll::Ready(err) = this.deadline_fut.as_mut().unwrap().as_mut().poll(cx) {
-            return Poll::Ready(Err(err));
-        }
+
         let amount = ready!(if let Some(char_codec) = &mut this.char_codec {
             char_codec.poll_codec(cx, &mut this.codec, buf)
         } else {
@@ -971,29 +979,6 @@ impl AsyncRead for BodyCodec {
             BodyCodec::GzipEncoder(r) => Pin::new(r).poll_read(cx, buf),
         }
     }
-}
-
-fn charset_from_headers(headers: &http::header::HeaderMap) -> Option<&str> {
-    headers
-        .get_str("content-type")
-        .and_then(|v| {
-            // only consider text content
-            if v.starts_with("text/") {
-                Some(v)
-            } else {
-                None
-            }
-        })
-        .and_then(|x| {
-            // text/html; charset=utf-8
-            let s = x.split(';');
-            s.last()
-        })
-        .and_then(|x| {
-            // charset=utf-8
-            let mut s = x.split('=');
-            s.nth(1)
-        })
 }
 
 impl fmt::Debug for BodyCodec {

@@ -127,7 +127,11 @@ impl<'a> HostPort<'a> {
     pub fn from_uri(uri: &'a http::Uri) -> Result<Self, Error> {
         let scheme = uri
             .scheme()
-            .unwrap_or_else(|| DEFAULT_URI.scheme().unwrap())
+            .unwrap_or_else(|| {
+                let scheme = DEFAULT_URI.scheme().unwrap();
+                debug!("No scheme in URI, using default: {}", scheme);
+                scheme
+            })
             .as_str();
 
         let authority = uri

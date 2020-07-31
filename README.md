@@ -1,6 +1,6 @@
 # hreq
 
-hreq is a user first async http client.
+hreq is a user first async http client and server.
 
 #### Early days
 
@@ -55,18 +55,16 @@ resources.
 
 ## http crate
 
-Most rust http clients use some variant of the [http crate]. The
-typical way is to copy the http crate source into the local source
-tree and extend it from there.
+Many rust http client/servers use some variant of the [http crate].
+It's often copied into the local source tree and extended from there.
 
-However copying the source comes with a trade off for the
-user. When writing a service that uses both a web server and
+When writing a service that uses both a web server and
 client crate, one often ends up with similar, but not exactly the
 same versions of types like `http::Request` and `http::Response`.
 
 hreq works using extension traits only. It re-exports the http
-crate, but does not copy it into the source tree. It therefore
-adheres strictly to the exact API definition as set out by the
+crate, but does not copy or modify it. It therefore adheres
+strictly to the exact API definition as set out by the
 http crate as well as avoids furthering the confusion of having
 multiple types with the same name.
 
@@ -103,7 +101,6 @@ loop and (so far) that is not considered for std.
 The async runtime is "pluggable" and comes in some different
 flavors.
 
-  * `Smol`. Requires the feature `smol`. Supports `.block()`
   * `AsyncStd`. Requires the feature `async-std`. Supports
     `.block()`.
   * `TokioSingle`. The default option. A minimal tokio `rt-core`
@@ -193,9 +190,7 @@ let res = agent.send(req).block();
 
 ### Redirects
 
-By default hreq follows up to 5 redirects. This currently works only for
-"standard" redirects such as 301, 302 etc. There are plans to also support
-307 and 308 with the [Expect-100] mechanic. Redirects can be turned off
+By default hreq follows up to 5 redirects. Redirects can be turned off
 by using an explicit agent in the same way as for retries.
 
 ## Compression
@@ -293,7 +288,7 @@ let body = Body::from_json(&json);
 * HTTP/2 and HTTP/1.1
 * TLS (https)
 * Timeout for entire request and reading the response
-* Switchable async runtime (`tokio` or `async-std`)
+* Switchable async runtime (`tokio`, `async-std`)
 * Single threaded by default
 * Built as an extension to `http` crate.
 * Query parameter manipulation in request builder

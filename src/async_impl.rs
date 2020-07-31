@@ -6,9 +6,12 @@ use crate::Stream;
 use futures_util::future::poll_fn;
 use once_cell::sync::Lazy;
 use std::future::Future;
+use std::io;
 use std::sync::Mutex;
 use std::task::Poll;
 use std::time::Duration;
+
+use std::net::SocketAddr;
 
 #[cfg(feature = "tokio")]
 use tokio_lib::runtime::Runtime as TokioRuntime;
@@ -24,7 +27,6 @@ pub(crate) struct TokioRuntime;
 /// hreq supports async-std and tokio. Tokio support is enabled by default and comes in some
 /// different flavors.
 ///
-///   * `Smol`. Requires the feature `smol`. Supports `.block()`
 ///   * `AsyncStd`. Requires the feature `async-std`. Supports
 ///     `.block()`.
 ///   * `TokioSingle`. The default option. A minimal tokio `rt-core`
@@ -79,8 +81,6 @@ pub(crate) struct TokioRuntime;
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum AsyncRuntime {
-    #[cfg(feature = "smol")]
-    Smol,
     #[cfg(feature = "async-std")]
     AsyncStd,
     #[cfg(feature = "tokio")]
@@ -94,24 +94,69 @@ pub enum AsyncRuntime {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(unused)]
 enum Inner {
-    Smol,
     AsyncStd,
     TokioSingle,
     TokioShared,
     TokioOwned,
 }
 
+#[cfg(feature = "server")]
+#[allow(dead_code)]
+pub(crate) enum Listener {
+    #[cfg(feature = "async-std")]
+    AsyncStd(async_std_lib::net::TcpListener),
+    #[cfg(not(feature = "async-std"))]
+    AsyncStd(FakeListener),
+    #[cfg(feature = "tokio")]
+    Tokio(tokio_lib::net::TcpListener),
+    #[cfg(not(feature = "tokio"))]
+    Tokio(FakeListener),
+}
+
+#[cfg(feature = "server")]
+impl Listener {
+    pub async fn accept(&mut self) -> Result<(impl Stream, SocketAddr), Error> {
+        use Listener::*;
+        Ok(match self {
+            Tokio(v) => {
+                let (t, a) = v.accept().await?;
+                #[cfg(feature = "tokio")]
+                {
+                    (Either::A(crate::tokio::from_tokio(t)), a)
+                }
+                #[cfg(not(feature = "tokio"))]
+                {
+                    (Either::A(t), a)
+                }
+            }
+            AsyncStd(v) => {
+                let (t, a) = v.accept().await?;
+                (Either::B(t), a)
+            }
+        })
+    }
+
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        match self {
+            Listener::AsyncStd(l) => l.local_addr(),
+            Listener::Tokio(l) => l.local_addr(),
+        }
+    }
+}
+
 static CURRENT_RUNTIME: Lazy<Mutex<Inner>> = Lazy::new(|| {
-    Mutex::new(if cfg!(feature = "smol") {
-        Inner::Smol
-    } else if cfg!(feature = "async-std") {
+    let rt = if cfg!(feature = "async-std") {
         Inner::AsyncStd
     } else if cfg!(feature = "tokio") {
         async_tokio::use_default();
         Inner::TokioSingle
     } else {
         panic!("No default async runtime. Use feature 'tokio' or 'async-std'");
-    })
+    };
+
+    trace!("Default runtime: {:?}", rt);
+
+    Mutex::new(rt)
 });
 
 fn current() -> Inner {
@@ -121,8 +166,6 @@ fn current() -> Inner {
 impl AsyncRuntime {
     fn into_inner(self) -> Inner {
         match self {
-            #[cfg(feature = "smol")]
-            AsyncRuntime::Smol => Inner::Smol,
             #[cfg(feature = "async-std")]
             AsyncRuntime::AsyncStd => Inner::AsyncStd,
             #[cfg(feature = "tokio")]
@@ -145,6 +188,9 @@ impl AsyncRuntime {
 
     pub fn make_default(self) {
         let mut current = CURRENT_RUNTIME.lock().unwrap();
+
+        trace!("Set runtime: {:?}", self);
+
         let inner = self.into_inner();
         *current = inner;
     }
@@ -155,15 +201,13 @@ impl AsyncRuntime {
             TokioSingle | TokioShared | TokioOwned => {
                 Either::A(async_tokio::connect_tcp(addr).await?)
             }
-            Smol => Either::B(Either::A(smol::connect_tcp(addr).await?)),
-            AsyncStd => Either::B(Either::B(async_std::connect_tcp(addr).await?)),
+            AsyncStd => Either::B(async_std::connect_tcp(addr).await?),
         })
     }
 
     pub(crate) async fn timeout(duration: Duration) {
         use Inner::*;
         match current() {
-            Smol => smol::timeout(duration).await,
             AsyncStd => async_std::timeout(duration).await,
             TokioSingle | TokioShared | TokioOwned => async_tokio::timeout(duration).await,
         }
@@ -172,7 +216,6 @@ impl AsyncRuntime {
     pub(crate) fn spawn<T: Future + Send + 'static>(task: T) {
         use Inner::*;
         match current() {
-            Smol => smol::spawn(task),
             AsyncStd => async_std::spawn(task),
             TokioSingle | TokioShared | TokioOwned => async_tokio::spawn(task),
         }
@@ -181,61 +224,18 @@ impl AsyncRuntime {
     pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
         use Inner::*;
         match current() {
-            Smol => smol::block_on(task),
             AsyncStd => async_std::block_on(task),
             TokioSingle | TokioShared | TokioOwned => async_tokio::block_on(task),
         }
     }
-}
 
-#[cfg(not(feature = "smol"))]
-pub(crate) mod smol {
-    use super::*;
-    pub(crate) async fn connect_tcp(_: &str) -> Result<impl Stream, Error> {
-        Ok(FakeStream) // fulfil type checker
-    }
-    pub(crate) async fn timeout(_: Duration) {
-        unreachable!();
-    }
-    pub(crate) fn spawn<T>(_: T)
-    where
-        T: Future + Send + 'static,
-    {
-        unreachable!();
-    }
-    pub(crate) fn block_on<F: Future>(_: F) -> F::Output {
-        unreachable!();
-    }
-}
-
-#[cfg(feature = "smol")]
-#[allow(unused)]
-pub(crate) mod smol {
-    use super::*;
-    use smol_lib::{run, Async, Task, Timer};
-    use std::net::TcpStream;
-
-    impl Stream for smol_lib::Async<TcpStream> {}
-
-    pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
-        Ok(Async::<TcpStream>::connect(addr).await?)
-    }
-
-    pub(crate) async fn timeout(duration: Duration) {
-        Timer::after(duration).await;
-    }
-
-    pub(crate) fn spawn<T>(task: T)
-    where
-        T: Future + Send + 'static,
-    {
-        Task::spawn(async move {
-            task.await;
-        }).detach();
-    }
-
-    pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
-        run(task)
+    #[cfg(feature = "server")]
+    pub(crate) async fn listen(addr: SocketAddr) -> Result<Listener, Error> {
+        use Inner::*;
+        match current() {
+            AsyncStd => async_std::listen(addr).await,
+            TokioSingle | TokioShared | TokioOwned => async_tokio::listen(addr).await,
+        }
     }
 }
 
@@ -255,6 +255,11 @@ mod async_std {
         unreachable!();
     }
     pub(crate) fn block_on<F: Future>(_: F) -> F::Output {
+        unreachable!();
+    }
+
+    #[cfg(feature = "server")]
+    pub(crate) async fn listen(_: SocketAddr) -> Result<Listener, Error> {
         unreachable!();
     }
 }
@@ -288,6 +293,13 @@ pub(crate) mod async_std {
     pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
         task::block_on(task)
     }
+
+    #[cfg(feature = "server")]
+    pub(crate) async fn listen(addr: SocketAddr) -> Result<Listener, Error> {
+        use async_std_lib::net::TcpListener;
+        let listener = TcpListener::bind(addr).await?;
+        Ok(Listener::AsyncStd(listener))
+    }
 }
 
 #[cfg(not(feature = "tokio"))]
@@ -316,6 +328,11 @@ pub(crate) mod async_tokio {
         unreachable!();
     }
     pub(crate) fn block_on<F: Future>(_: F) -> F::Output {
+        unreachable!();
+    }
+
+    #[cfg(feature = "server")]
+    pub(crate) async fn listen(_: SocketAddr) -> Result<Listener, Error> {
         unreachable!();
     }
 }
@@ -410,12 +427,33 @@ pub(crate) mod async_tokio {
             panic!("Can't use .block() with a TokioShared runtime.");
         }
     }
+
+    #[cfg(feature = "server")]
+    pub(crate) async fn listen(addr: SocketAddr) -> Result<Listener, Error> {
+        use tokio_lib::net::TcpListener;
+        let listener = TcpListener::bind(addr).await?;
+        Ok(Listener::Tokio(listener))
+    }
 }
 
 // TODO does this cause memory leaks?
 pub async fn never() {
     poll_fn::<(), _>(|_| Poll::Pending).await;
     unreachable!()
+}
+
+#[allow(unused)]
+pub(crate) struct FakeListener(SocketAddr);
+
+#[allow(unused)]
+impl FakeListener {
+    async fn accept(&mut self) -> Result<(FakeStream, SocketAddr), io::Error> {
+        Ok((FakeStream, self.0))
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        unreachable!("local_addr() on FakeListener");
+    }
 }
 
 // filler in for "impl Stream" type

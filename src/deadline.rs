@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 const ZERO: Duration = Duration::from_millis(0);
 
 #[derive(Debug, Copy, Clone)]
-pub struct Deadline {
+pub(crate) struct Deadline {
     req_start: Option<Instant>,
     timeout: Option<Duration>,
 }
@@ -27,6 +27,8 @@ impl Deadline {
         Err: Into<Error>,
     {
         // first to complete...
+        // TODO: it might be possible to get rid of the fuse() here. futures_util
+        // has new select versions that don't work like that.
         select! {
             a = f.fuse() => match a {
                 Ok(a) => Ok(a),

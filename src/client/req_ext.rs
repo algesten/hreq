@@ -1,7 +1,7 @@
 //! Extension trait for `http::request::Request`
 
+use crate::client::Agent;
 use crate::head_ext::HeaderMapExt;
-use crate::Agent;
 use crate::Body;
 use crate::Error;
 use async_trait::async_trait;

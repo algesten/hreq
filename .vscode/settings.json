@@ -1,0 +1,12 @@
+{
+    "search.exclude": {
+        "**/hreq-h2/**": true
+    },
+    "files.exclude": {
+        "**/hreq-h2": true
+    },
+    "rust-analyzer.cargo.features": [
+        "server"
+    ],
+    "rust-analyzer.cargo.loadOutDirsFromCheck": true
+}

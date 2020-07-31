@@ -10,7 +10,6 @@ use futures_util::ready;
 use rustls::Session;
 use rustls::{ClientConfig, ClientSession};
 use std::io;
-use std::io::{Read, Write};
 use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -25,8 +24,8 @@ use webpki_roots::TLS_SERVER_ROOTS;
 /// the negotiation is returned with the wrapped stream.
 ///
 /// [`protocol`]: ../proto/enum.Protocol.html
-pub(crate) async fn wrap_tls<S: Stream>(
-    stream: S,
+pub(crate) async fn wrap_tls_client(
+    stream: impl Stream,
     domain: &str,
 ) -> Result<(impl Stream, Protocol), Error> {
     //
@@ -47,7 +46,33 @@ pub(crate) async fn wrap_tls<S: Stream>(
 
     poll_fn(|cx| Pin::new(&mut tls).poll_handshake(cx)).await?;
 
-    let proto = Protocol::from_alpn(tls.client.get_alpn_protocol());
+    let proto = Protocol::from_alpn(tls.tls.get_alpn_protocol());
+
+    Ok((tls, proto))
+}
+
+#[cfg(feature = "server")]
+use rustls::ServerConfig;
+
+#[cfg(feature = "server")]
+pub(crate) fn configure_tls_server(config: &mut ServerConfig) {
+    config.alpn_protocols = vec![ALPN_H2.to_owned(), ALPN_H1.to_owned()];
+}
+
+#[cfg(feature = "server")]
+pub(crate) async fn wrap_tls_server(
+    stream: impl Stream,
+    config: Arc<ServerConfig>,
+) -> Result<(impl Stream, Protocol), Error> {
+    use rustls::ServerSession;
+
+    let server = ServerSession::new(&config);
+
+    let mut tls = TlsStream::new(stream, server);
+
+    poll_fn(|cx| Pin::new(&mut tls).poll_handshake(cx)).await?;
+
+    let proto = Protocol::from_alpn(tls.tls.get_alpn_protocol());
 
     Ok((tls, proto))
 }
@@ -55,9 +80,9 @@ pub(crate) async fn wrap_tls<S: Stream>(
 /// Wrapper stream which encapsulates the rustls TLS session.
 ///
 /// rustls is sync, so there's some trickery with internal buffers to work around that.
-struct TlsStream<S> {
+struct TlsStream<S, E> {
     stream: S,
-    client: ClientSession,
+    tls: E,
     read_buf: Vec<u8>, // TODO use a ring buffer or similar here
     write_buf: Vec<u8>,
     wants_flush: bool,
@@ -65,11 +90,11 @@ struct TlsStream<S> {
     plaintext_idx: usize,
 }
 
-impl<S: Stream> TlsStream<S> {
-    pub fn new(stream: S, client: ClientSession) -> Self {
+impl<S: Stream, E: Session + Unpin + 'static> TlsStream<S, E> {
+    pub fn new(stream: S, tls: E) -> Self {
         TlsStream {
             stream,
-            client,
+            tls,
             read_buf: Vec::new(),
             write_buf: Vec::new(),
             wants_flush: false,
@@ -110,7 +135,7 @@ impl<S: Stream> TlsStream<S> {
             //   * we are handshaking
             //   * the user has asked to read (plaintext), but there is none such decrypted.
             if self.read_buf.is_empty()
-                && (poll_for_read && self.plaintext_left() == 0 || self.client.is_handshaking())
+                && (poll_for_read && self.plaintext_left() == 0 || self.tls.is_handshaking())
             {
                 // we want to read something new
                 let _ = self.try_read_buf(cx);
@@ -118,36 +143,36 @@ impl<S: Stream> TlsStream<S> {
 
             let mut did_tls_read_or_write = false;
 
-            if self.client.wants_read() && !self.read_buf.is_empty() {
+            if self.tls.wants_read() && !self.read_buf.is_empty() {
                 let mut sync = SyncStream::new(
                     &mut self.read_buf,
                     &mut self.write_buf,
                     &mut self.wants_flush,
                 );
                 // If the client reads to end, we "block", but actually use the waker straight away.
-                let _ = ready!(blocking_to_poll(self.client.read_tls(&mut sync), cx))?;
+                let _ = ready!(blocking_to_poll(self.tls.read_tls(&mut sync), cx))?;
                 // potential TLS errors will arise here.
-                self.client
+                self.tls
                     .process_new_packets()
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-                if !self.client.is_handshaking() {
+                if !self.tls.is_handshaking() {
                     let rest = self.plaintext.split_off(self.plaintext_idx);
                     mem::replace(&mut self.plaintext, rest);
                     self.plaintext_idx = 0;
-                    let _ = self.client.read_to_end(&mut self.plaintext)?;
+                    let _ = self.tls.read_to_end(&mut self.plaintext)?;
                 }
 
                 did_tls_read_or_write = true;
             }
 
-            if self.client.wants_write() {
+            if self.tls.wants_write() {
                 let mut sync = SyncStream::new(
                     &mut self.read_buf,
                     &mut self.write_buf,
                     &mut self.wants_flush,
                 );
-                let _ = ready!(blocking_to_poll(self.client.write_tls(&mut sync), cx))?;
+                let _ = ready!(blocking_to_poll(self.tls.write_tls(&mut sync), cx))?;
 
                 did_tls_read_or_write = true;
             }
@@ -196,7 +221,7 @@ impl<S: Stream> TlsStream<S> {
     fn poll_handshake(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
         let this = self.get_mut();
         ready!(this.poll_tls(cx, false))?;
-        if this.client.is_handshaking() {
+        if this.tls.is_handshaking() {
             Poll::Pending
         } else {
             Ok(()).into()
@@ -204,7 +229,7 @@ impl<S: Stream> TlsStream<S> {
     }
 }
 
-impl<S: Stream> AsyncRead for TlsStream<S> {
+impl<S: Stream, E: Session + Unpin + 'static> AsyncRead for TlsStream<S, E> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -223,7 +248,7 @@ impl<S: Stream> AsyncRead for TlsStream<S> {
     }
 }
 
-impl<S: Stream> AsyncWrite for TlsStream<S> {
+impl<S: Stream, E: Session + Unpin + 'static> AsyncWrite for TlsStream<S, E> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -233,7 +258,7 @@ impl<S: Stream> AsyncWrite for TlsStream<S> {
 
         ready!(this.poll_tls(cx, false))?;
 
-        let amount = this.client.write(buf)?;
+        let amount = this.tls.write(buf)?;
 
         Ok(amount).into()
     }
@@ -242,7 +267,7 @@ impl<S: Stream> AsyncWrite for TlsStream<S> {
 
         ready!(this.poll_tls(cx, false))?;
 
-        this.client.flush()?;
+        this.tls.flush()?;
 
         ready!(this.poll_tls(cx, false))?;
 
@@ -253,7 +278,7 @@ impl<S: Stream> AsyncWrite for TlsStream<S> {
 
         ready!(this.poll_tls(cx, false))?;
 
-        this.client.send_close_notify();
+        this.tls.send_close_notify();
 
         ready!(this.poll_tls(cx, false))?;
 
@@ -261,7 +286,7 @@ impl<S: Stream> AsyncWrite for TlsStream<S> {
     }
 }
 
-impl<S: Stream> Stream for TlsStream<S> {}
+impl<S: Stream, E: Session + Unpin + 'static> Stream for TlsStream<S, E> {}
 
 /// Helper struct to adapt some buffers into a blocking `io::Read` and `io::Write`.
 ///

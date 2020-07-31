@@ -71,3 +71,4 @@ What are we doing?
 - [ ] Metadata gathering through request
 - [x] Flush after sending body
 - [ ] More compressions?
+- [ ] Buffer small request/response bodies

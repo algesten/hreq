@@ -1,14 +1,15 @@
 //! Connection pooling, redirects, cookies etc.
 
+use super::conn::BodyBuf;
+use super::connect;
+use super::cookies::Cookies;
+use super::Connection;
 use crate::async_impl::AsyncRuntime;
-use crate::conn::BodyBuf;
-use crate::connect;
-use crate::cookies::Cookies;
-use crate::reqb_ext::resolve_hreq_ext;
-use crate::reqb_ext::{QueryParams, RequestParams};
+use crate::params::resolve_hreq_params;
+use crate::params::HReqParams;
+use crate::params::QueryParams;
 use crate::uri_ext::UriExt;
 use crate::Body;
-use crate::Connection;
 use crate::Error;
 use crate::ResponseExt;
 use cookie::Cookie;
@@ -199,11 +200,18 @@ impl Agent {
     /// assert!(res.is_err());
     /// assert!(res.unwrap_err().is_io());
     /// ```
-    pub async fn send(&mut self, req: http::Request<Body>) -> Result<http::Response<Body>, Error> {
-        // apply the parameters held in a separate storage
-        let req = resolve_hreq_ext(req);
+    pub async fn send<B: Into<Body>>(
+        &mut self,
+        req: http::Request<B>,
+    ) -> Result<http::Response<Body>, Error> {
+        let (parts, body) = req.into_parts();
 
-        let params = req.extensions().get::<RequestParams>().unwrap().clone();
+        let body = body.into();
+
+        // apply the parameters, query params affect the request uri.
+        let parts = resolve_hreq_params(parts);
+
+        let params = parts.extensions.get::<HReqParams>().unwrap().clone();
 
         // Buffer of body data so we can handle resending the body on 307/308 redirects.
         let mut body_buffer = BodyBuf::new(params.redirect_body_buffer);
@@ -216,7 +224,7 @@ impl Agent {
         let mut cookies = self.cookies.take();
 
         let ret = deadline
-            .race(self.do_send(req, params, &mut cookies, &mut body_buffer))
+            .race(self.do_send(parts, body, params, &mut cookies, &mut body_buffer))
             .await;
 
         self.cookies = cookies;
@@ -226,12 +234,13 @@ impl Agent {
 
     async fn do_send(
         &mut self,
-        req: http::Request<Body>,
-        params: RequestParams,
+        parts: http::request::Parts,
+        body: Body,
+        params: HReqParams,
         cookies: &mut Option<Cookies>,
         body_buffer: &mut BodyBuf,
     ) -> Result<http::Response<Body>, Error> {
-        trace!("Agent {} {}", req.method(), req.uri());
+        trace!("Agent {} {}", parts.method, parts.uri);
 
         let mut retries = self.retries;
         let mut backoff_millis: u64 = 125;
@@ -243,9 +252,9 @@ impl Agent {
         // if we have a param.with_override, whenever we are to open a connection,
         // we check whether the current uri has an equal hostport to this, that
         // way we can override also subsequent requests for the original uri.
-        let orig_hostport = req.uri().host_port()?.to_owned();
+        let orig_hostport = parts.uri.host_port()?.to_owned();
 
-        let mut next_req = req;
+        let mut next_req = http::Request::from_parts(parts, body);
 
         loop {
             let mut req = next_req;
@@ -315,6 +324,9 @@ impl Agent {
 
             match conn.send_request(req, body_buffer).await {
                 Ok(mut res) => {
+                    // whether we are to retain this connection in the pool.
+                    let mut retain = true;
+
                     // squirrel away cookies (also in redirects)
                     if use_cookies {
                         for cookie_head in res.headers().get_all("set-cookie") {
@@ -354,19 +366,37 @@ impl Agent {
                         parts.uri = parts.uri.parse_relative(location)?;
                         next_req = http::Request::from_parts(parts, body);
 
-                        // 307/308 keeps resends the body data, if the buffer is big enough.
                         let code = res.status_code();
-                        let keep_data = code > 303;
-                        if let Some(body) = body_buffer.reset(keep_data) {
+                        let is_307ish = code > 303;
+
+                        // 307/308 keep resends the body data, if the buffer is big enough.
+                        if let Some(body) = body_buffer.reset(is_307ish) {
                             let (parts, _) = next_req.into_parts();
                             next_req = http::Request::from_parts(parts, body);
+                        }
+
+                        if is_307ish
+                            && !conn.is_http2()
+                            && conn.host_port() == &next_req.uri().host_port()?
+                        {
+                            // there's a big chance we started sending the body to the
+                            // current host before we received the 307/308. for http1
+                            // that means the upstream is "clogged" with a half body.
+                            // drop and start over.
+                            retain = false;
                         }
 
                         // exhaust the previous body before following the redirect.
                         // this is to ensure http1.1 connections are in a good state.
                         if res.body_mut().read_to_end().await.is_err() {
                             // some servers just close the connection after a redirect.
+                            retain = false;
+                        }
+
+                        // drop connection from pool if need be.
+                        if !retain {
                             let conn_id = conn.id();
+                            debug!("Remove from pool: {}", conn.host_port());
                             self.connections.retain(|c| c.id() != conn_id);
                         }
 
@@ -416,7 +446,7 @@ fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
     parts.headers = from.headers().clone();
 
     // there might be other extensions we're missing here.
-    if let Some(params) = from.extensions().get::<RequestParams>() {
+    if let Some(params) = from.extensions().get::<HReqParams>() {
         parts.extensions.insert(params.clone());
     }
     if let Some(params) = from.extensions().get::<QueryParams>() {

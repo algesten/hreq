@@ -1,19 +1,18 @@
 //! Extension trait for `http::request::Builder`
 
-use crate::deadline::Deadline;
-use crate::req_ext::RequestExt;
+use super::req_ext::RequestExt;
+use crate::params::QueryParams;
+use crate::params::{AutoCharset, HReqParams};
 use crate::uri_ext::HostPort;
 use crate::Body;
 use crate::Error;
 use async_trait::async_trait;
 use encoding_rs::Encoding;
 use http::request;
-use http::Uri;
 use http::{Request, Response};
-use qstring::QString;
 use serde::Serialize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Extends [`http::request::Builder`] with ergonomic extras for hreq.
 ///
@@ -502,7 +501,7 @@ impl RequestBuilderExt for request::Builder {
     }
 
     fn timeout(self, duration: Duration) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             params.timeout = Some(duration);
         })
     }
@@ -512,63 +511,65 @@ impl RequestBuilderExt for request::Builder {
     }
 
     fn force_http2(self, enabled: bool) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             params.force_http2 = enabled;
         })
     }
 
     fn charset_encode(self, enable: bool) -> Self {
-        with_request_params(self, |params| {
-            params.charset_encode = enable;
+        with_hreq_params(self, |params| {
+            params.charset_tx.toggle_target(enable);
         })
     }
 
     fn charset_encode_source(self, encoding: &str) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             let enc = Encoding::for_label(encoding.as_bytes());
             if enc.is_none() {
                 warn!("Unknown character encoding: {}", encoding);
+                return;
             }
-            params.charset_encode_source = enc;
+            params.charset_tx.source = AutoCharset::Set(enc.unwrap());
         })
     }
 
     fn charset_decode(self, enable: bool) -> Self {
-        with_request_params(self, |params| {
-            params.charset_decode = enable;
+        with_hreq_params(self, |params| {
+            params.charset_rx.toggle_source(enable);
         })
     }
 
     fn charset_decode_target(self, encoding: &str) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             let enc = Encoding::for_label(encoding.as_bytes());
             if enc.is_none() {
                 warn!("Unknown character encoding: {}", encoding);
+                return;
             }
-            params.charset_decode_target = enc;
+            params.charset_rx.target = AutoCharset::Set(enc.unwrap());
         })
     }
 
     fn content_encode(self, enable: bool) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             params.content_encode = enable;
         })
     }
 
     fn content_decode(self, enable: bool) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             params.content_decode = enable;
         })
     }
 
     fn redirect_body_buffer(self, size: usize) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             params.redirect_body_buffer = size;
         })
     }
 
     fn with_override(self, host: &str, port: u16, tls: bool) -> Self {
-        with_request_params(self, |params| {
+        with_hreq_params(self, |params| {
             params.with_override = Some(Arc::new(HostPort::new(host, port, tls)));
         })
     }
@@ -603,43 +604,6 @@ impl RequestBuilderExt for request::Builder {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct RequestParams {
-    pub req_start: Option<Instant>,
-    pub timeout: Option<Duration>,
-    pub force_http2: bool,
-    pub charset_encode: bool,
-    pub charset_encode_source: Option<&'static Encoding>,
-    pub charset_decode: bool,
-    pub charset_decode_target: Option<&'static Encoding>,
-    pub content_encode: bool,
-    pub content_decode: bool,
-    pub redirect_body_buffer: usize,
-    pub with_override: Option<Arc<HostPort<'static>>>,
-}
-
-impl RequestParams {
-    pub fn new() -> Self {
-        RequestParams {
-            charset_encode: true,
-            charset_decode: true,
-            content_encode: true,
-            content_decode: true,
-            ..Default::default()
-        }
-    }
-
-    fn mark_request_start(&mut self) {
-        if self.req_start.is_none() {
-            self.req_start = Some(Instant::now());
-        }
-    }
-
-    pub fn deadline(&self) -> Deadline {
-        Deadline::new(self.req_start, self.timeout)
-    }
-}
-
 fn get_or_insert<T: Send + Sync + 'static, F: FnOnce() -> T>(
     builder: &mut request::Builder,
     f: F,
@@ -651,69 +615,11 @@ fn get_or_insert<T: Send + Sync + 'static, F: FnOnce() -> T>(
     ext.get_mut::<T>().unwrap()
 }
 
-fn with_request_params<F: FnOnce(&mut RequestParams)>(
+fn with_hreq_params<F: FnOnce(&mut HReqParams)>(
     mut builder: request::Builder,
     f: F,
 ) -> request::Builder {
-    let params = get_or_insert(&mut builder, RequestParams::new);
+    let params = get_or_insert(&mut builder, HReqParams::new);
     f(params);
     builder
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct QueryParams {
-    pub params: Vec<(String, String)>,
-}
-
-impl QueryParams {
-    fn new() -> Self {
-        QueryParams {
-            ..Default::default()
-        }
-    }
-
-    fn apply(self, parts: &mut http::request::Parts) {
-        let mut uri_parts = parts.uri.clone().into_parts();
-
-        // Construct new instance of PathAndQuery with our modified query.
-        let new_path_and_query = {
-            //
-            let (path, query) = uri_parts
-                .path_and_query
-                .as_ref()
-                .map(|p| (p.path(), p.query().unwrap_or("")))
-                .unwrap_or(("", ""));
-
-            let mut qs = QString::from(query);
-            for (key, value) in self.params.into_iter() {
-                qs.add_pair((key, value));
-            }
-
-            // PathAndQuery has no API for modifying any fields. This seems to be our only
-            // option to get a new instance of it using the public API.
-            let tmp: Uri = format!("http://fake{}?{}", path, qs).parse().unwrap();
-            let tmp_parts = tmp.into_parts();
-            tmp_parts.path_and_query.unwrap()
-        };
-
-        // This is good. We can change the PathAndQuery field.
-        uri_parts.path_and_query = Some(new_path_and_query);
-
-        let new_uri = Uri::from_parts(uri_parts).unwrap();
-        parts.uri = new_uri;
-    }
-}
-
-/// Apply the parameters held in the separate storage.
-pub fn resolve_hreq_ext(req: http::request::Request<Body>) -> http::request::Request<Body> {
-    let (mut parts, body) = req.into_parts();
-    if let Some(query_params) = parts.extensions.remove::<QueryParams>() {
-        query_params.apply(&mut parts);
-    }
-    if parts.extensions.get::<RequestParams>().is_none() {
-        parts.extensions.insert(RequestParams::new());
-    }
-    let req_params = parts.extensions.get_mut::<RequestParams>().unwrap();
-    req_params.mark_request_start();
-    http::Request::from_parts(parts, body)
 }

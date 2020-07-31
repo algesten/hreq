@@ -1,5 +1,5 @@
 #![warn(clippy::all)]
-//! hreq is a user first async http client.
+//! hreq is a user first async http client and server.
 //!
 //! ### Early days
 //!
@@ -54,18 +54,16 @@
 //!
 //! # http crate
 //!
-//! Most rust http clients use some variant of the [http crate]. The
-//! typical way is to copy the http crate source into the local source
-//! tree and extend it from there.
+//! Many rust http client/servers use some variant of the [http crate].
+//! It's often copied into the local source tree and extended from there.
 //!
-//! However copying the source comes with a trade off for the
-//! user. When writing a service that uses both a web server and
+//! When writing a service that uses both a web server and
 //! client crate, one often ends up with similar, but not exactly the
 //! same versions of types like `http::Request` and `http::Response`.
 //!
 //! hreq works using extension traits only. It re-exports the http
-//! crate, but does not copy it into the source tree. It therefore
-//! adheres strictly to the exact API definition as set out by the
+//! crate, but does not copy or modify it. It therefore adheres
+//! strictly to the exact API definition as set out by the
 //! http crate as well as avoids furthering the confusion of having
 //! multiple types with the same name.
 //!
@@ -102,7 +100,6 @@
 //! The async runtime is "pluggable" and comes in some different
 //! flavors.
 //!
-//!   * `Smol`. Requires the feature `smol`. Supports `.block()`
 //!   * `AsyncStd`. Requires the feature `async-std`. Supports
 //!     `.block()`.
 //!   * `TokioSingle`. The default option. A minimal tokio `rt-core`
@@ -192,9 +189,7 @@
 //!
 //! ## Redirects
 //!
-//! By default hreq follows up to 5 redirects. This currently works only for
-//! "standard" redirects such as 301, 302 etc. There are plans to also support
-//! 307 and 308 with the [Expect-100] mechanic. Redirects can be turned off
+//! By default hreq follows up to 5 redirects. Redirects can be turned off
 //! by using an explicit agent in the same way as for retries.
 //!
 //! # Compression
@@ -292,7 +287,7 @@
 //! * HTTP/2 and HTTP/1.1
 //! * TLS (https)
 //! * Timeout for entire request and reading the response
-//! * Switchable async runtime (`tokio` or `async-std`)
+//! * Switchable async runtime (`tokio`, `async-std`)
 //! * Single threaded by default
 //! * Built as an extension to `http` crate.
 //! * Query parameter manipulation in request builder
@@ -322,48 +317,59 @@
 #[macro_use]
 extern crate log;
 
-mod agent;
 mod async_impl;
 mod block_ext;
 mod body;
+mod body_send;
 mod charset;
-mod conn;
-mod cookies;
+mod client;
 mod deadline;
 mod either;
 mod error;
-mod h1;
 mod head_ext;
+mod params;
 mod proto;
 mod psl;
-mod req_ext;
-mod reqb_ext;
 mod res_ext;
 mod uri_ext;
+
+pub use client::Agent;
+
+#[cfg(feature = "server")]
+pub mod server;
 
 #[cfg(feature = "tls")]
 mod tls;
 
-#[cfg(all(test, feature = "async-std"))]
-mod test;
-
 #[cfg(feature = "tokio")]
 mod tokio;
 
-pub(crate) const VERSION: &str = env!("CARGO_PKG_VERSION");
+#[doc(hidden)]
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+use once_cell::sync::Lazy;
+
+pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| {
+    format!("rust/hreq/{}", crate::VERSION)
+});
 
 pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
-pub use crate::agent::Agent;
 pub use crate::async_impl::AsyncRuntime;
 pub use crate::block_ext::BlockExt;
 pub use crate::body::Body;
+pub use crate::client::RequestBuilderExt;
+pub use crate::client::RequestExt;
 pub use crate::error::Error;
-pub use crate::req_ext::RequestExt;
-pub use crate::reqb_ext::RequestBuilderExt;
 pub use crate::res_ext::ResponseExt;
-pub use cookie::Cookie;
 pub use http;
+
+pub mod cookie {
+    //! Re-export of the [cookie crate].
+    //!
+    //! [cookie crate]: https://docs.rs/cookie/latest/cookie/
+    pub use cookie::Cookie;
+}
 
 #[cfg(feature = "fuzz")]
 pub use crate::charset::CharCodec;
@@ -380,81 +386,14 @@ pub mod prelude {
     //! ```
 
     #[doc(no_inline)]
-    pub use crate::{BlockExt, RequestBuilderExt, RequestExt, ResponseExt};
+    pub use crate::{BlockExt, Body, RequestBuilderExt, RequestExt, ResponseExt};
     #[doc(no_inline)]
     pub use http::{Request, Response};
-}
 
-use crate::conn::Connection;
-use crate::conn::ProtocolImpl;
-use crate::proto::Protocol;
-use crate::uri_ext::HostPort;
+    #[cfg(feature = "server")]
+    #[doc(no_inline)]
+    pub use crate::server::{MethodHandlers, ResponseBuilderExt, Router, Server, ServerRequestExt};
+}
 
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
 impl Stream for Box<dyn Stream> {}
-
-pub(crate) async fn connect(
-    host_port: &HostPort<'_>,
-    force_http2: bool,
-) -> Result<Connection, Error> {
-    // "host:port"
-    let addr = host_port.to_string();
-
-    let (stream, alpn_proto) = {
-        // "raw" tcp
-        let tcp = AsyncRuntime::connect_tcp(&addr).await?;
-
-        #[cfg(feature = "tls")]
-        {
-            use crate::either::Either;
-            use crate::tls::wrap_tls;
-            if host_port.is_tls() {
-                // wrap in tls
-                let (tls, proto) = wrap_tls(tcp, host_port.host()).await?;
-                (Either::A(tls), proto)
-            } else {
-                // use tcp
-                (Either::B(tcp), Protocol::Unknown)
-            }
-        }
-
-        #[cfg(not(feature = "tls"))]
-        (tcp, Protocol::Unknown)
-    };
-
-    let proto = if force_http2 {
-        Protocol::Http2
-    } else {
-        alpn_proto
-    };
-
-    open_stream(host_port.to_owned(), stream, proto).await
-}
-
-pub(crate) async fn open_stream(
-    host_port: HostPort<'static>,
-    stream: impl Stream,
-    proto: Protocol,
-) -> Result<Connection, Error> {
-    if proto == Protocol::Http2 {
-        let (h2, h2conn) = hreq_h2::client::handshake(stream).await?;
-        // drives the connection independently of the h2 api surface.
-        AsyncRuntime::spawn(async {
-            if let Err(err) = h2conn.await {
-                // this is expected to happen when the connection disconnects
-                trace!("Error in connection: {:?}", err);
-            }
-        });
-        Ok(Connection::new(host_port, ProtocolImpl::Http2(h2)))
-    } else {
-        let (h1, h1conn) = h1::handshake(stream);
-        // drives the connection independently of the h1 api surface
-        AsyncRuntime::spawn(async {
-            if let Err(err) = h1conn.await {
-                // this is expected to happen when the connection disconnects
-                trace!("Error in connection: {:?}", err);
-            }
-        });
-        Ok(Connection::new(host_port, ProtocolImpl::Http1(h1)))
-    }
-}

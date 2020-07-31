@@ -1,15 +1,16 @@
 use crate::body::BodyImpl;
-use crate::h1;
-use crate::h1::SendRequest as H1SendRequest;
+use crate::body_send::BodySender;
 use crate::head_ext::HeaderMapExt;
-use crate::reqb_ext::RequestParams;
+use crate::params::HReqParams;
 use crate::uri_ext::HostPort;
 use crate::uri_ext::MethodExt;
 use crate::Body;
 use crate::Error;
+use crate::AGENT_IDENT;
 use bytes::Bytes;
-use futures_util::future::poll_fn;
 use futures_util::ready;
+use hreq_h1 as h1;
+use hreq_h1::client::SendRequest as H1SendRequest;
 use hreq_h2 as h2;
 use hreq_h2::client::SendRequest as H2SendRequest;
 use once_cell::sync::Lazy;
@@ -24,7 +25,6 @@ use std::task::Poll;
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 const BUF_SIZE: usize = 16_384;
 
-#[derive(Clone)]
 pub enum ProtocolImpl {
     Http1(H1SendRequest),
     Http2(H2SendRequest<Bytes>),
@@ -93,48 +93,15 @@ impl Connection {
 
         let (mut parts, mut body) = req.into_parts();
 
-        let params = parts.extensions.get::<RequestParams>().unwrap();
+        let params = parts.extensions.get::<HReqParams>().unwrap();
         let deadline = params.deadline();
 
         // resolve deferred body codecs because content-encoding and content-type are settled.
         if body.is_configurable() {
-            body.configure(params.clone(), &parts.headers, false);
+            body.configure(&params, &parts.headers, false);
         }
 
-        if let Some(len) = body.content_encoded_length() {
-            // the body indicates a length (for sure).
-            // we don't want to set content-length: 0 unless we know it's
-            // a method that really has a body. also we never override
-            // a user set content-length header.
-            let user_set_length = parts.headers.get("content-length").is_some();
-
-            if !user_set_length && (len > 0 || parts.method.indicates_body()) {
-                parts.headers.set("content-length", len.to_string());
-            }
-        } else if !self.is_http2() && parts.method.indicates_body() {
-            // body does not indicate a length (like from a reader),
-            // and method indicates there really is one.
-            // we chose chunked.
-            if parts.headers.get("transfer-encoding").is_none() {
-                parts.headers.set("transfer-encoding", "chunked");
-            }
-        }
-
-        if parts.headers.get("user-agent").is_none() {
-            // TODO this could be created once for the entire lifetime of the library
-            let agent = format!("rust/hreq/{}", crate::VERSION);
-            parts.headers.set("user-agent", agent);
-        }
-
-        if parts.headers.get("accept").is_none() {
-            parts.headers.set("accept", "*/*");
-        }
-
-        if parts.headers.get("content-type").is_none() {
-            if let Some(ctype) = body.content_type() {
-                parts.headers.set("content-type", ctype);
-            }
-        }
+        configure_request(&mut parts, &body, self.is_http2());
 
         let req = http::Request::from_parts(parts, body);
 
@@ -156,13 +123,48 @@ impl Connection {
     }
 }
 
+/// Ensure correct content-length, transfer-encoding, user-agent, accept and content-type headers.
+pub(crate) fn configure_request(parts: &mut http::request::Parts, body: &Body, is_http2: bool) {
+    if let Some(len) = body.content_encoded_length() {
+        // the body indicates a length (for sure).
+        // we don't want to set content-length: 0 unless we know it's
+        // a method that really has a body. also we never override
+        // a user set content-length header.
+        let user_set_length = parts.headers.get("content-length").is_some();
+
+        if !user_set_length && (len > 0 || parts.method.indicates_body()) {
+            parts.headers.set("content-length", len.to_string());
+        }
+    } else if !is_http2 && body.is_definitely_a_body() {
+        // body does not indicate a length (like from a reader),
+        // but there definitely is a body.
+        if parts.headers.get("transfer-encoding").is_none() {
+            parts.headers.set("transfer-encoding", "chunked");
+        }
+    }
+
+    if parts.headers.get("user-agent").is_none() {
+        parts.headers.set("user-agent", &*AGENT_IDENT);
+    }
+
+    if parts.headers.get("accept").is_none() {
+        parts.headers.set("accept", "*/*");
+    }
+
+    if parts.headers.get("content-type").is_none() {
+        if let Some(ctype) = body.content_type() {
+            parts.headers.set("content-type", ctype);
+        }
+    }
+}
+
 async fn send_req(
     req: http::Request<Body>,
     body_buffer: &mut BodyBuf,
     proto: &ProtocolImpl,
     unfin: Arc<()>,
 ) -> Result<http::Response<Body>, Error> {
-    let params = req.extensions().get::<RequestParams>().unwrap().clone();
+    let params = req.extensions().get::<HReqParams>().unwrap().clone();
 
     let (parts, mut body_read) = req.into_parts();
     let req = http::Request::from_parts(parts, ());
@@ -183,6 +185,8 @@ async fn send_req(
                     // early response did not happen, keep sending body
                 }
                 TryOnce::Ready(v) => {
+                    // TODO: For now we assume an early response means aborting the
+                    // body sending. This is not true for expect 100-continue.
                     early_response = Some(v);
                     break;
                 }
@@ -193,7 +197,7 @@ async fn send_req(
 
             let mut amount_read = 0;
 
-            // use buffered body (from potential 307/308 redirect)
+            // use buffered body (from a potential earlier 307/308 redirect)
             if use_body_buf {
                 let n = body_buffer.read(&mut buf[..]);
                 if n == 0 {
@@ -207,7 +211,15 @@ async fn send_req(
             // read new body data
             if !use_body_buf {
                 let n = body_read.read(&mut buf[..]).await?;
+
+                // Append read data to the body_buffer in case of 307/308 redirect.
+                // The body_buffer might be inert and no bytes are retained.break
+                //
+                // TODO: For bodies constructed from String, Vec, File etc, there is
+                // no need to retain the bytes in a buffer. We should make something in
+                // Body that allows us to reset it back to starting position when possible.
                 body_buffer.append(&buf[..n]);
+
                 amount_read = n;
             }
 
@@ -215,13 +227,14 @@ async fn send_req(
                 break;
             }
 
+            // Ship it to they underlying http1.1/http2 layer.
             body_send.send_data(&buf[0..amount_read]).await?;
         }
 
         // pass the body back with the buffer
         body_buffer.return_body = Some(body_read);
 
-        body_send.send_end()?;
+        body_send.send_end().await?;
     }
 
     let (mut parts, mut res_body) = if let Some(res) = early_response {
@@ -232,7 +245,7 @@ async fn send_req(
 
     parts.extensions.insert(params.clone());
     res_body.set_unfinished_recs(unfin);
-    res_body.configure(params, &parts.headers, true);
+    res_body.configure(&params, &parts.headers, true);
 
     Ok(http::Response::from_parts(parts, res_body))
 }
@@ -261,7 +274,7 @@ impl ProtocolImpl {
 
 /// Generalisation over response future
 enum ResponseFuture {
-    H1(h1::ResponseFuture),
+    H1(h1::client::ResponseFuture),
     H2(h2::client::ResponseFuture),
 }
 
@@ -284,67 +297,9 @@ impl Future for ResponseFuture {
     }
 }
 
-/// Generalisation over sending body request data
-enum BodySender {
-    H1(h1::SendStream),
-    H2(h2::SendStream<Bytes>),
-}
-
-impl BodySender {
-    async fn ready(self) -> Result<Self, Error> {
-        match self {
-            BodySender::H1(s) => Ok(BodySender::H1(s.ready().await?)),
-            BodySender::H2(s) => Ok(BodySender::H2(s)),
-        }
-    }
-
-    async fn send_data(&mut self, mut buf: &[u8]) -> Result<(), Error> {
-        match self {
-            BodySender::H1(s) => Ok(s.send_data(buf, false)?),
-            BodySender::H2(s) => {
-                loop {
-                    if buf.len() == 0 {
-                        break;
-                    }
-
-                    s.reserve_capacity(buf.len());
-
-                    let actual_capacity = {
-                        let cur = s.capacity();
-                        if cur > 0 {
-                            cur
-                        } else {
-                            poll_fn(|cx| s.poll_capacity(cx)).await.ok_or_else(|| {
-                                Error::Proto("Stream gone before capacity".into())
-                            })??
-                        }
-                    };
-
-                    // h2::SendStream lacks a sync or async function that allows us
-                    // to send borrowed data. This copy is unfortunate.
-                    // TODO contact h2 and ask if they would consider some kind of
-                    // async variant that takes a &mut [u8].
-                    let data = Bytes::copy_from_slice(&buf[..actual_capacity]);
-
-                    s.send_data(data, false)?;
-
-                    buf = &buf[actual_capacity..];
-                }
-
-                Ok(())
-            }
-        }
-    }
-
-    fn send_end(&mut self) -> Result<(), Error> {
-        match self {
-            BodySender::H1(s) => Ok(s.send_data(&[], true)?),
-            BodySender::H2(s) => Ok(s.send_data(Bytes::new(), true)?),
-        }
-    }
-}
-
-/// When polling the wrapped future will never go Poll::Pending.
+/// When polling the wrapped future will never return Poll::Pending, but instead
+/// TryOnce::Pending. This is useful in an `async fn` where we don't have access
+/// to the Context to do a manual poll.
 struct TryOnceFuture<F>(F);
 
 impl<F> Future for TryOnceFuture<F>
@@ -371,9 +326,14 @@ where
     Ready(F::Output),
 }
 
+/// Body buffer, used to retain a sent body for cases where we want to handle 307/308 redirects.
+/// The buffer is always present, but might be inert if the internal vec is `None`.
 pub struct BodyBuf {
     vec: Option<Vec<u8>>,
     read_idx: usize,
+    // Hack to allow us passing the original body back to the agent.
+    //
+    // TODO can we find some more elegant way of passing this back?
     return_body: Option<Body>,
 }
 
@@ -393,6 +353,10 @@ impl BodyBuf {
         }
     }
 
+    /// Reset the body buffer back to 0 optionally retaining the data that has been appended.
+    ///
+    /// NB: Returning a Option<Body> here is a hack that allows us to pass the original body
+    /// back to the Agent in case we need it for the next request.
     pub fn reset(&mut self, keep_data: bool) -> Option<Body> {
         trace!(
             "BodyBuf reset keep_data: {}, len: {}",
@@ -411,6 +375,7 @@ impl BodyBuf {
         }
     }
 
+    /// Read from this buffer without dropping any data.
     fn read(&mut self, buf: &mut [u8]) -> usize {
         if let Some(vec) = &mut self.vec {
             let max = buf.len().min(vec.len() - self.read_idx);
@@ -423,6 +388,8 @@ impl BodyBuf {
         }
     }
 
+    /// Append more data to this buffer. If the amount of data to append is more than the
+    /// buffer capacity, the buffer is cleared and no data is retained anymore.
     fn append(&mut self, buf: &[u8]) {
         if let Some(vec) = &mut self.vec {
             let remaining = vec.capacity() - vec.len();
@@ -436,6 +403,7 @@ impl BodyBuf {
         }
     }
 
+    /// Current amount of retained bytes.
     fn len(&self) -> usize {
         self.vec.as_ref().map(|v| v.len()).unwrap_or(0)
     }

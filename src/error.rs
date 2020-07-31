@@ -1,6 +1,8 @@
-use crate::h1;
 use std::fmt;
 use std::io;
+
+#[cfg(feature = "server")]
+use std::net;
 
 #[cfg(feature = "tls")]
 use rustls::TLSError;
@@ -25,6 +27,8 @@ pub enum Error {
     /// TLS (https) errors.
     #[cfg(feature = "tls")]
     TlsError(TLSError),
+    #[cfg(feature = "server")]
+    AddrParse(net::AddrParseError),
 }
 
 impl Error {
@@ -82,6 +86,8 @@ impl fmt::Display for Error {
             Error::Json(v) => write!(f, "json: {}", v),
             #[cfg(feature = "tls")]
             Error::TlsError(v) => write!(f, "tls: {}", v),
+            #[cfg(feature = "server")]
+            Error::AddrParse(v) => write!(f, "addr parse: {}", v),
         }
     }
 }
@@ -94,14 +100,14 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<h1::Error> for Error {
-    fn from(e: h1::Error) -> Self {
+impl From<hreq_h1::Error> for Error {
+    fn from(e: hreq_h1::Error) -> Self {
         match e {
-            h1::Error::User(v) => Error::User(v),
-            h1::Error::Proto(v) => Error::Proto(v),
-            h1::Error::Io(v) => Error::Io(v),
-            h1::Error::Http11Parser(v) => Error::Http11Parser(v),
-            h1::Error::Http(v) => Error::Http(v),
+            hreq_h1::Error::User(v) => Error::User(v),
+            hreq_h1::Error::Proto(v) => Error::Proto(v),
+            hreq_h1::Error::Io(v) => Error::Io(v),
+            hreq_h1::Error::Http11Parser(v) => Error::Http11Parser(v),
+            hreq_h1::Error::Http(v) => Error::Http(v),
         }
     }
 }
@@ -132,5 +138,12 @@ impl From<serde_json::Error> for Error {
 impl From<TLSError> for Error {
     fn from(e: TLSError) -> Self {
         Error::TlsError(e)
+    }
+}
+
+#[cfg(feature = "server")]
+impl From<net::AddrParseError> for Error {
+    fn from(e: net::AddrParseError) -> Self {
+        Error::AddrParse(e)
     }
 }
