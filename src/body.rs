@@ -17,7 +17,6 @@ use serde::Serialize;
 use std::fmt;
 use std::future::Future;
 use std::io;
-use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -516,7 +515,7 @@ impl Body {
 
         if let Some(new_codec) = new_codec {
             // to avoid creating another BufReader
-            let _ = mem::replace(self.codec.get_mut(), new_codec);
+            *self.codec.get_mut() = new_codec;
         }
 
         let charset_config = if is_incoming {
@@ -550,7 +549,7 @@ impl Body {
         if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
             if let Some(reader) = reader.take() {
                 let new_codec = BodyCodec::Pass(reader);
-                mem::replace(self.codec.get_mut(), new_codec);
+                *self.codec.get_mut() = new_codec;
             }
         }
     }

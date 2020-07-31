@@ -10,7 +10,6 @@ use futures_util::ready;
 use rustls::Session;
 use rustls::{ClientConfig, ClientSession};
 use std::io;
-use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -158,7 +157,7 @@ impl<S: Stream, E: Session + Unpin + 'static> TlsStream<S, E> {
 
                 if !self.tls.is_handshaking() {
                     let rest = self.plaintext.split_off(self.plaintext_idx);
-                    mem::replace(&mut self.plaintext, rest);
+                    self.plaintext = rest;
                     self.plaintext_idx = 0;
                     let _ = self.tls.read_to_end(&mut self.plaintext)?;
                 }
@@ -204,7 +203,7 @@ impl<S: Stream, E: Session + Unpin + 'static> TlsStream<S, E> {
             let to_write = &self.write_buf[..];
             let amount = ready!(Pin::new(&mut self.stream).poll_write(cx, to_write))?;
             let rest = self.write_buf.split_off(amount);
-            mem::replace(&mut self.write_buf, rest);
+            self.write_buf = rest;
         }
         Ok(()).into()
     }
@@ -322,7 +321,7 @@ impl<'a> io::Read for SyncStream<'a> {
         let max = buf.len().min(from.len());
         (&mut buf[0..max]).copy_from_slice(&from[0..max]);
         let rest = from.split_off(max);
-        mem::replace(self.read_buf, rest);
+        *self.read_buf = rest;
         Ok(max)
     }
 }

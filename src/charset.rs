@@ -3,7 +3,6 @@ use encoding_rs::{Decoder, Encoder, Encoding};
 use futures_util::ready;
 use std::fmt;
 use std::io;
-use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -112,7 +111,7 @@ impl CharCodec {
             // this unsafe is ok, since we moved max to be on a char boundary.
             let vec = unsafe { self.decoded.as_mut_vec() };
             let rest = vec.split_off(max);
-            mem::replace(vec, rest);
+            *vec = rest;
 
             Ok(max)
         }

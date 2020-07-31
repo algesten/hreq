@@ -2,7 +2,6 @@ use crate::Stream;
 use crate::{AsyncRead, AsyncWrite};
 use futures_util::io::AsyncReadExt;
 use std::io;
-use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -46,7 +45,7 @@ impl<S: Stream> AsyncRead for Peekable<S> {
             // much of the buffer has been read. however, we are only expecting
             // to read the buf once (for peeking the http2 preface).
             let split = this.buf.split_off(max);
-            mem::replace(&mut this.buf, split);
+            this.buf = split;
             return Ok(max).into();
         }
         Pin::new(&mut this.stream).poll_read(cx, buf)
