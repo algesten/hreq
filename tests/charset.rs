@@ -121,7 +121,7 @@ const EUC_JP: &[u8] = &[
 ];
 
 #[test]
-fn to_charset_shift_jis() -> Result<(), Error> {
+fn charset_euc_jp_to_shift_jis() -> Result<(), Error> {
     common::setup_logger();
 
     let mut server = Server::new();

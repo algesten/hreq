@@ -349,9 +349,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use once_cell::sync::Lazy;
 
-pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| {
-    format!("rust/hreq/{}", crate::VERSION)
-});
+pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| format!("rust/hreq/{}", crate::VERSION));
 
 pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
