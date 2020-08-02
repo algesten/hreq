@@ -72,7 +72,7 @@ multiple types with the same name.
 
 Rust's async story is fantastic, but not every situation requires
 async.  hreq "fakes" being a blocking library by default having a
-very minial tokio runtime ([`rt-core`]) combined with a `.block()`
+very minimal tokio runtime ([`rt-core`]) combined with a `.block()`
 call that is placed where we expect an `.await` in an async
 situation.
 
