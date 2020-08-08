@@ -5,6 +5,8 @@ mod common;
 
 #[test]
 fn query_params() -> Result<(), Error> {
+    common::setup_logger();
+
     let bld = http::Request::builder();
     let req = bld.uri("/path").query("x", "y").body(())?;
 
@@ -24,6 +26,8 @@ fn query_params() -> Result<(), Error> {
 
 #[test]
 fn query_params_doubled() -> Result<(), Error> {
+    common::setup_logger();
+
     let bld = http::Request::builder();
     let req = bld.uri("/path").query("x", "y").query("x", "y").body(())?;
 
@@ -43,6 +47,8 @@ fn query_params_doubled() -> Result<(), Error> {
 
 #[test]
 fn request_header() -> Result<(), Error> {
+    common::setup_logger();
+
     let bld = http::Request::builder();
     let req = bld.uri("/path").header("x-foo", "bar").body(())?;
 
@@ -62,6 +68,8 @@ fn request_header() -> Result<(), Error> {
 
 #[test]
 fn non_existing_host_name() {
+    common::setup_logger();
+
     let res = Request::get("https://tremendously-incorrect-host-name.com")
         .call()
         .block();
@@ -74,6 +82,8 @@ fn non_existing_host_name() {
 
 #[test]
 fn missing_scheme() {
+    common::setup_logger();
+
     // defaults to http
     let res = Request::get("google.com").call().block();
 
