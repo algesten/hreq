@@ -6,6 +6,8 @@ mod common;
 
 #[test]
 fn sane_headers() -> Result<(), Error> {
+    common::setup_logger();
+
     let mut server = Server::new();
 
     server
@@ -41,6 +43,8 @@ fn sane_headers() -> Result<(), Error> {
 
 #[test]
 fn res_body1kb_no_size() -> Result<(), Error> {
+    common::setup_logger();
+
     let mut server = Server::new();
 
     server.at("/path").all(|_: http::Request<Body>| async move {
@@ -61,6 +65,8 @@ fn res_body1kb_no_size() -> Result<(), Error> {
 
 #[test]
 fn res_body10mb_with_size() -> Result<(), Error> {
+    common::setup_logger();
+
     const AMOUNT: usize = 10 * 1024 * 1024;
     let mut server = Server::new();
 
