@@ -50,7 +50,7 @@ cookie = { version = "0.14", default-features = false, features = ["percent-enco
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
-hreq-h1 = { version = "0.1.1" }
+hreq-h1 = { version = "0.1.2" }
 hreq-h2 = { version = "0.2.5" }
 http = "0.2"
 httpdate = "0.3.2"
