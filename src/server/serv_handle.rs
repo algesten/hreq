@@ -1,7 +1,11 @@
 use futures_util::future::FutureExt;
 use futures_util::select;
+use std::fmt;
 use std::future::Future;
 
+/// Handle to a running server.
+///
+/// The server functions as long as this handle is not dropped.
 pub struct ServerHandle {
     tx: async_channel::Sender<()>,
 }
@@ -13,12 +17,15 @@ impl ServerHandle {
         (ServerHandle { tx }, EndFut { rx })
     }
 
+    /// Signal to the server to close down. Stop listening to the port and exit.
     pub async fn shutdown(self) {
         self.tx.send(()).await.ok();
     }
 
-    pub async fn keep_alive(self) {
-        NoFuture.await
+    /// Await this to keep the server alive forever. Will never return.
+    pub async fn keep_alive(self) -> ! {
+        NoFuture.await;
+        unreachable!()
     }
 }
 
@@ -51,5 +58,11 @@ impl std::future::Future for NoFuture {
         _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         std::task::Poll::Pending
+    }
+}
+
+impl fmt::Debug for ServerHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ServerHandle")
     }
 }

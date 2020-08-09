@@ -1,4 +1,4 @@
-//! Server that handles incoming http requests.
+//! Server that handles http requests.
 
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;
@@ -7,6 +7,7 @@ use crate::AsyncRuntime;
 use crate::Body;
 use crate::Error;
 use crate::Stream;
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,6 +40,9 @@ pub use router::Router;
 pub use serv_handle::ServerHandle;
 pub use serv_req_ext::ServerRequestExt;
 
+/// Server of http requests.
+///
+/// See module documentation for example.
 #[derive(Clone)]
 pub struct Server<State> {
     state: Arc<State>,
@@ -64,14 +68,25 @@ where
         }
     }
 
-    pub fn state(&self) -> State {
-        (*self.state).clone()
+    /// Get a reference to the current state.
+    pub fn state(&self) -> &State {
+        &*self.state
     }
 
+    /// Add a route to the server.
+    ///
+    /// Routes must be added before the call to `listen`.
     pub fn at(&mut self, path: &str) -> Route<'_, State> {
         self.router.at(path)
     }
 
+    /// Bind and listen to the port (without TLS).
+    ///
+    /// The address bound will be `0.0.0.0:<port>`. Use port `0` to get a random port.
+    ///
+    /// The internal router is cloned on this call. That means all routes must be added
+    /// already. Routes added after this call will not cause an error, but will not
+    /// be dispatched to either.
     pub async fn listen(&self, port: u16) -> Result<(ServerHandle, SocketAddr), Error> {
         #[cfg(feature = "tls")]
         {
@@ -83,6 +98,13 @@ where
         }
     }
 
+    /// Bind and listen to the port with TLS.
+    ///
+    /// The address bound will be `0.0.0.0:<port>`. Use port `0` to get a random port.
+    ///
+    /// The internal router is cloned on this call. That means all routes must be added
+    /// already. Routes added after this call will not cause an error, but will not
+    /// be dispatched to either.
     #[cfg(feature = "tls")]
     pub async fn listen_tls(
         &self,
@@ -189,6 +211,9 @@ where
         Ok((shut, local_addr))
     }
 
+    /// Manually dispatch a request to this server.
+    ///
+    /// This is mainly useful for building tests without binding a port.
     pub async fn handle<B: Into<Body>>(
         &self,
         req: http::Request<B>,
@@ -243,7 +268,7 @@ where
         let state = self.state.clone();
 
         // dispatch server request from 2.
-        let res = self.router.run(state, req).await.into_inner()?;
+        let res = self.router.run(state, req).await.into_result()?;
 
         // 3. split server response.
         let (mut parts, body) = {
@@ -411,7 +436,7 @@ where
                 // middleware/handlers. Most likely it will be translated to a 500
                 // error, but it's still semantically different from an error encountered
                 // while trying to send the response back.
-                let result = driver.router.run(state, req).await.into_inner();
+                let result = driver.router.run(state, req).await.into_result();
 
                 // Send the response
                 if let Err(err) = send.send_response(result, params).await {
@@ -424,6 +449,12 @@ where
 
             AsyncRuntime::spawn(req_task);
         }
+    }
+}
+
+impl<State> fmt::Debug for Server<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Server")
     }
 }
 

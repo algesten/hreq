@@ -2,10 +2,34 @@ use crate::Body;
 use crate::Error;
 use http::Response;
 
+/// Concrete return type from endpoints and middleware.
+///
+/// This type will rarely be used directly. The return signature of endpoints and
+/// middleware is `impl Into<Reply>`. As a user of this crate you would prefer
+/// using one of the return types possible via the `Into` trait.
+///
+/// | Return type               | Response                    | Notes                    |
+/// |---------------------------|-----------------------------|--------------------------|
+/// | `()`                      | text/plain                  | `""`                     |
+/// | `&str`                    | text/plain                  | `"Hello"`                |
+/// | `String`                  | text/plain                  | `"Hello".to_string()`    |
+/// | `&String`                 | text/plain                  | `&"Hello".to_string()`   |
+/// | `&[u8]`                   | application/octet-stream    | `b"abcdef"`              |
+/// | `Vec<u8>`                 | application/octet-stream    | `vec![65,66,67]`         |
+/// | `&Vec<u8>`                | application/octet-stream    | `&vec![65,66,67]`        |
+/// | `std::fs::File`           | application/octet-stream    | NB. Only with tokio      |
+/// | [`Body`]                  | Body determined             |                          |
+/// | `Response<Into<Body>>`    | `Response` and fallback to [`Body`] |                  |
+/// | `Result<Into<Body>, Into<Error>>` | See [`Body`]        |                          |
+/// | `Result<Response<Into<Body>>, Into<Error>>` | `Response and falllback to [`Body`]  |
+/// | `Option<Into<Reply>>`     | 404 on `None`               |                          |
+///
+#[derive(Debug)]
 pub struct Reply(Result<Response<Body>, Error>);
 
 impl Reply {
-    pub fn into_inner(self) -> Result<Response<Body>, Error> {
+    /// Unwrap the inner results.
+    pub fn into_result(self) -> Result<Response<Body>, Error> {
         self.0
     }
 

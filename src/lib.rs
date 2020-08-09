@@ -1,5 +1,5 @@
 #![warn(clippy::all)]
-//#![warn(missing_docs, missing_debug_implementations)]
+#![warn(missing_docs, missing_debug_implementations)]
 
 //! hreq is a user first async http client and server.
 //!

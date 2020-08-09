@@ -65,13 +65,18 @@ where
     }
 }
 
-// Next struct passed to middleware to continue the request chain.
+/// Type passed to middleware to continue the request chain.
+///
+/// See [`Middleware`] trait for an example.
+///
+/// [`Middleware`]: trait.Middleware.html
 pub struct Next(NextFn);
 type NextFn = Box<dyn FnOnce(Request<Body>) -> Pin<Box<dyn Future<Output = Reply> + Send>> + Send>;
 
 impl Next {
+    /// Continue the middleware chain.
     pub async fn run(self, req: Request<Body>) -> Result<Response<Body>, Error> {
-        (self.0)(req).await.into_inner()
+        (self.0)(req).await.into_result()
     }
 }
 
