@@ -27,6 +27,7 @@ pub enum Error {
     /// TLS (https) errors.
     #[cfg(feature = "tls")]
     TlsError(TLSError),
+    /// Failure to parse an address that the server will listen to.
     #[cfg(feature = "server")]
     AddrParse(net::AddrParseError),
 }

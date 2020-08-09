@@ -69,6 +69,7 @@ use std::future::Future;
 /// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
 /// [`block_on`]: https://docs.rs/async-std/latest/async_std/task/fn.block_on.html
 pub trait BlockExt {
+    /// Block on a future to complete.
     fn block(self) -> Self::Output
     where
         Self: Future;

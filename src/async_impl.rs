@@ -81,12 +81,16 @@ pub(crate) struct TokioRuntime;
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum AsyncRuntime {
+    /// Use `async-std` crate.
     #[cfg(feature = "async-std")]
     AsyncStd,
+    /// Use a tokio `rt-core` single threaded runtime. This is the default.
     #[cfg(feature = "tokio")]
     TokioSingle,
+    /// Pick up on a tokio shared runtime.
     #[cfg(feature = "tokio")]
     TokioShared,
+    /// Use a tokio runtime owned by hreq.
     #[cfg(feature = "tokio")]
     TokioOwned(TokioRuntime),
 }
@@ -186,6 +190,7 @@ impl AsyncRuntime {
         }
     }
 
+    /// Make this runtime the default.
     pub fn make_default(self) {
         let mut current = CURRENT_RUNTIME.lock().unwrap();
 

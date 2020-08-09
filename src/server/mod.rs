@@ -202,6 +202,7 @@ where
         //
         // TODO: gosh, this needs some refactoring.
 
+        // 1. split/configure client request.
         let (mut parts, body, client_req_params) = {
             let (parts, body) = req.into_parts();
             let mut parts = resolve_hreq_params(parts);
@@ -213,6 +214,7 @@ where
             (parts, body, params)
         };
 
+        // 2. make server request using parts/body from 1.
         let (req, server_req_params) = {
             let len = body.content_encoded_length();
             let mut body = Body::from_async_read(body, len);
@@ -225,9 +227,10 @@ where
         // state for stateful handlers.
         let state = self.state.clone();
 
-        // dispatch it.
+        // dispatch server request from 2.
         let res = self.router.run(state, req).await.into_inner()?;
 
+        // 3. split server response.
         let (mut parts, body) = {
             // post configure the body
             let (parts, mut body) = res.into_parts();
@@ -242,6 +245,7 @@ where
             (parts, body)
         };
 
+        // 4. make client response using parts/body from 3.
         let (parts, body) = {
             let len = body.content_encoded_length();
             let mut body = Body::from_async_read(body, len);

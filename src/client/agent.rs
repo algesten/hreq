@@ -13,6 +13,7 @@ use crate::Body;
 use crate::Error;
 use crate::ResponseExt;
 use cookie::Cookie;
+use std::fmt;
 use std::time::Duration;
 
 /// Agents provide redirects, connection pooling, cookies and retries.
@@ -454,4 +455,10 @@ fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
     }
 
     http::Request::from_parts(parts, body)
+}
+
+impl fmt::Debug for Agent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Agent")
+    }
 }
