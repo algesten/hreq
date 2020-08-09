@@ -66,29 +66,29 @@ fn request_header() -> Result<(), Error> {
     Ok(())
 }
 
-// #[test]
-// fn non_existing_host_name() {
-//     common::setup_logger();
+#[test]
+fn non_existing_host_name() {
+    common::setup_logger();
 
-//     let res = Request::get("https://tremendously-incorrect-host-name.com")
-//         .call()
-//         .block();
+    let res = Request::get("https://tremendously-incorrect-host-name.so-wrong")
+        .call()
+        .block();
 
-//     assert!(res.is_err());
-//     let err = res.unwrap_err();
+    assert!(res.is_err());
+    let err = res.unwrap_err();
 
-//     assert!(err.is_io());
-// }
+    assert!(err.is_io());
+}
 
-// #[test]
-// fn missing_scheme() {
-//     common::setup_logger();
+#[test]
+fn missing_scheme() {
+    common::setup_logger();
 
-//     // defaults to http
-//     let res = Request::get("google.com").call().block();
+    // defaults to http
+    let res = Request::get("google.com").call().block();
 
-//     assert!(res.is_ok());
-// }
+    assert!(res.is_ok());
+}
 
 // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
