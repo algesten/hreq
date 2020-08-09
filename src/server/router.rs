@@ -7,6 +7,7 @@ use http::Request;
 use http::Response;
 use std::future::Future;
 use std::sync::Arc;
+use tracing_futures::Instrument;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RouteMethod {
@@ -86,13 +87,16 @@ where
                     continue;
                 }
                 let m = ep.path.path_match(&path);
+                trace!("Found endpoint: {:?}", ep);
                 if let Some(m) = m {
                     req.extensions_mut().insert(m);
                     return ep.chain.run(state, req).await;
                 }
             }
+            trace!("No endpoint");
             Response::builder().status(404).body("Not found").into()
         }
+        .instrument(trace_span!("router_run"))
     }
 }
 
@@ -114,5 +118,17 @@ impl<State> Endpoint<State> {
 
     fn is_path(&self, path: &ParsedPath) -> bool {
         &self.path == path
+    }
+}
+
+use std::fmt;
+
+impl<State> fmt::Debug for Endpoint<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Endpoint {{ method: {:?}, path: {:?}, chain: {:?} }}",
+            self.method, self.path, self.chain
+        )
     }
 }

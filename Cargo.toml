@@ -45,24 +45,26 @@ server = [
 ]
 
 [dependencies]
+async-trait = "0.1"
 bytes = "0.5"
 cookie = { version = "0.14", default-features = false, features = ["percent-encode"] }
+encoding_rs = "0.8"
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
-hreq-h1 = { version = "0.1.4" }
-hreq-h2 = { version = "0.2.5" }
+hreq-h1 = { path = "../hreq-h1" }
+hreq-h2 = { path = "../hreq-h2" }
 http = "0.2"
-httpdate = "0.3.2"
 httparse = "1"
-log = "0.4"
+httpdate = "0.3.2"
 once_cell = "1"
-qstring = "0.7"
-async-trait = "0.1"
-encoding_rs = "0.8"
 publicsuffix = { default-features = false, version = "1.5.4" }
+qstring = "0.7"
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
+tracing = "0.1"
+tracing-futures = "0.2"
+
 # keep in sync with time brought in by cookie
 time = "=0.2.16"
 
@@ -86,7 +88,6 @@ futures-core = { version = "0.3", default-features = false, features = ["std"], 
 async-channel = { version = "1", optional = true }
 
 [dev-dependencies]
-pretty_env_logger = "0.4"
-env_logger = "0.7"
+tracing-subscriber = "0.2"
 serde_derive = "1"
 rand = "0.7"

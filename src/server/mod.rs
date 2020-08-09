@@ -10,6 +10,7 @@ use crate::Stream;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing_futures::Instrument;
 
 mod chain;
 mod conn;
@@ -91,6 +92,7 @@ where
         Ok(self.do_listen(port, Some(tls)).await?)
     }
 
+    #[instrument(name = "server_listen", skip(self, port, tls))]
     async fn do_listen(
         &self,
         port: u16,
@@ -121,7 +123,8 @@ where
             }
         };
 
-        AsyncRuntime::spawn(async move {
+        // listening is a task so we can return the shutdown handles.
+        let task = async move {
             loop {
                 trace!("Waiting for connection");
 
@@ -131,7 +134,12 @@ where
                 match next {
                     Ok(v) => {
                         let (stream, remote_addr) = v;
+
                         trace!("Connection from: {}", remote_addr);
+
+                        let span =
+                            trace_span!("conn_task", remote_addr = &remote_addr.to_string()[..]);
+                        span.follows_from(tracing::span::Span::current());
 
                         // Local clone for this connection.
                         let driver = driver.clone();
@@ -139,7 +147,7 @@ where
                         #[cfg(feature = "tls")]
                         let tls = tls.clone();
 
-                        AsyncRuntime::spawn(async move {
+                        let conn_task = async move {
                             #[cfg(feature = "tls")]
                             {
                                 if let Err(e) =
@@ -152,12 +160,16 @@ where
                             #[cfg(not(feature = "tls"))]
                             {
                                 if let Err(e) =
-                                    server.connect(stream, local_addr, remote_addr).await
+                                    driver.connect(stream, local_addr, remote_addr).await
                                 {
                                     debug!("Client connection failed: {}", e);
                                 }
                             }
-                        });
+                        }
+                        .instrument(span);
+
+                        // each socket is handled in another spawn to listen for more sockets.
+                        AsyncRuntime::spawn(conn_task);
                     }
                     Err(e) => {
                         // We end up here if we have too many open file descriptors.
@@ -169,7 +181,10 @@ where
 
             #[allow(unreachable_code)] // for type checker
             Some(())
-        });
+        }
+        .instrument(trace_span!("listen_task"));
+
+        AsyncRuntime::spawn(task);
 
         Ok((shut, local_addr))
     }
@@ -357,6 +372,8 @@ where
 
         debug!("Handshake done, waiting for requests: {}", remote_addr);
 
+        let mut req_no = 0;
+
         loop {
             // Process each incoming request in turn.
             let inc = self.end.race(conn.accept(local_addr, remote_addr)).await;
@@ -371,13 +388,15 @@ where
                 return Ok(());
             };
 
+            req_no += 1;
+
             // Cloning the driver is cheap for the inner spawn.
             let driver = self.clone();
 
             // Each request is handled in a separate spawn. This allow http2 to
             // do multiple requests (streams) multiplexed over the same connection
             // in parallel.
-            AsyncRuntime::spawn(async move {
+            let req_task = async move {
                 let (req, send) = next;
                 let params = req
                     .extensions()
@@ -400,7 +419,10 @@ where
                     // disconnected or similar.
                     debug!("Error sending response: {}", err);
                 }
-            });
+            }
+            .instrument(debug_span!("req_task", no = req_no));
+
+            AsyncRuntime::spawn(req_task);
         }
     }
 }

@@ -5,9 +5,11 @@ use super::{Middleware, StateMiddleware};
 use crate::Body;
 use crate::Error;
 use http::{Request, Response};
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use tracing_futures::Instrument;
 
 /// Endpoint, handler or a router.
 #[derive(Clone)]
@@ -33,6 +35,7 @@ where
                 End::Router(r) => r.run(state, req).await,
             }
         }
+        .instrument(trace_span!("endpoint_run"))
     }
 }
 
@@ -58,6 +61,7 @@ where
                 Mid::StateMiddleware(m) => m.call((*state).clone(), req, next).await,
             }
         }
+        .instrument(trace_span!("middleware_run"))
     }
 }
 
@@ -97,9 +101,11 @@ where
         let chain = self.next.clone();
         let state2 = state.clone();
         let next = Next(Box::new(|req: Request<Body>| {
-            Box::pin(async move { chain.run(state2, req).await })
+            Box::pin(
+                async move { chain.run(state2, req).await }.instrument(trace_span!("next_run")),
+            )
         }));
-        async move { self.mid.run(state, req, next).await }
+        async move { self.mid.run(state, req, next).await }.instrument(trace_span!("midwrap_run"))
     }
 }
 
@@ -119,12 +125,15 @@ where
         state: Arc<State>,
         req: Request<Body>,
     ) -> Pin<Box<dyn Future<Output = Reply> + Send + 'a>> {
-        Box::pin(async move {
-            match self {
-                Chain::MidWrap(c) => c.run(state, req).await.into(),
-                Chain::End(e) => e.run(state, req).await,
+        Box::pin(
+            async move {
+                match self {
+                    Chain::MidWrap(c) => c.run(state, req).await.into(),
+                    Chain::End(e) => e.run(state, req).await,
+                }
             }
-        })
+            .instrument(trace_span!("chain_run")),
+        )
     }
 }
 
@@ -167,5 +176,49 @@ impl<State> Into<Chain<State>> for MidWrap<State> {
 impl<State> Into<Chain<State>> for End<State> {
     fn into(self) -> Chain<State> {
         Chain::End(self)
+    }
+}
+
+impl<State> fmt::Debug for Mid<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Mid::Middleware(_) => write!(f, "Middleware"),
+            Mid::StateMiddleware(_) => write!(f, "StateMiddleware"),
+        }
+    }
+}
+
+impl<State> fmt::Debug for MidWrap<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "MidWrap {{ mid: {:?}, next: {:?} }}",
+            self.mid, self.next
+        )
+    }
+}
+
+impl fmt::Debug for Next {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Next")
+    }
+}
+
+impl<State> fmt::Debug for End<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            End::Handler(_) => write!(f, "Handler"),
+            End::StateHandler(_) => write!(f, "StateHandler"),
+            End::Router(_) => write!(f, "Router"),
+        }
+    }
+}
+
+impl<State> fmt::Debug for Chain<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Chain::MidWrap(m) => write!(f, "{:?}", m),
+            Chain::End(e) => write!(f, "{:?}", e),
+        }
     }
 }

@@ -2,6 +2,7 @@ use crate::AsyncRuntime;
 use crate::Error;
 use crate::Stream;
 use hreq_h1 as h1;
+use tracing_futures::Instrument;
 
 mod agent;
 mod conn;
@@ -67,22 +68,26 @@ pub(crate) async fn open_stream(
     if proto == Protocol::Http2 {
         let (h2, h2conn) = hreq_h2::client::handshake(stream).await?;
         // drives the connection independently of the h2 api surface.
-        AsyncRuntime::spawn(async {
+        let conn_task = async {
             if let Err(err) = h2conn.await {
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);
             }
-        });
+        }
+        .instrument(trace_span!("conn_task"));
+        AsyncRuntime::spawn(conn_task);
         Ok(Connection::new(host_port, ProtocolImpl::Http2(h2)))
     } else {
         let (h1, h1conn) = h1::client::handshake(stream);
         // drives the connection independently of the h1 api surface
-        AsyncRuntime::spawn(async {
+        let conn_task = async {
             if let Err(err) = h1conn.await {
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);
             }
-        });
+        }
+        .instrument(trace_span!("conn_task"));
+        AsyncRuntime::spawn(conn_task);
         Ok(Connection::new(host_port, ProtocolImpl::Http1(h1)))
     }
 }

@@ -47,18 +47,21 @@ impl AsyncRead for DataGenerator {
 pub fn setup_logger() {
     static START: Once = Once::new();
     START.call_once(|| {
+        use tracing::Level;
+        use tracing_subscriber::fmt::format::FmtSpan;
+        use tracing_subscriber::FmtSubscriber;
+
         let test_log = std::env::var("TEST_LOG")
             .map(|x| x != "0" && x.to_lowercase() != "false")
             .unwrap_or(false);
-        let level = if test_log {
-            log::LevelFilter::Trace
-        } else {
-            log::LevelFilter::Info
-        };
-        pretty_env_logger::formatted_builder()
-            .filter_level(log::LevelFilter::Warn)
-            .filter_module("hreq", level)
-            .target(env_logger::Target::Stdout)
-            .init();
+        let level = if test_log { Level::TRACE } else { Level::INFO };
+
+        let sub = FmtSubscriber::builder()
+            .with_env_filter("hreq=trace,hreq_h1=trace,hreq_h2=trace")
+            .with_max_level(level)
+            .with_span_events(FmtSpan::CLOSE)
+            .finish();
+
+        tracing::subscriber::set_global_default(sub).expect("tracing set_global_default");
     });
 }

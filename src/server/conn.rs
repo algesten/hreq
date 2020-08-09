@@ -110,6 +110,7 @@ pub(crate) enum SendResponse {
 }
 
 impl SendResponse {
+    #[instrument(skip(self, result, req_params))]
     pub async fn send_response(
         self,
         result: Result<http::Response<Body>, Error>,

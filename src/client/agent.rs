@@ -13,8 +13,12 @@ use crate::Body;
 use crate::Error;
 use crate::ResponseExt;
 use cookie::Cookie;
+use once_cell::sync::Lazy;
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+static AGENT_COUNT: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
 /// Agents provide redirects, connection pooling, cookies and retries.
 ///
@@ -201,10 +205,14 @@ impl Agent {
     /// assert!(res.is_err());
     /// assert!(res.unwrap_err().is_io());
     /// ```
+    #[instrument(name = "agent_send", skip(self, req), fields(no = tracing::field::Empty))]
     pub async fn send<B: Into<Body>>(
         &mut self,
         req: http::Request<B>,
     ) -> Result<http::Response<Body>, Error> {
+        let count = AGENT_COUNT.fetch_add(1, Ordering::Relaxed);
+        tracing::span::Span::current().record("no", &count);
+
         let (parts, body) = req.into_parts();
 
         let body = body.into();

@@ -1,7 +1,6 @@
 //! Bundle the public suffix list in the compiled code.
 
 use flate2::read::GzDecoder;
-use log::trace;
 use once_cell::sync::Lazy;
 use publicsuffix::List;
 use std::io::{Read, Result as IoResult};

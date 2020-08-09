@@ -340,10 +340,8 @@ pub struct BodyBuf {
 impl BodyBuf {
     pub fn new(size: usize) -> BodyBuf {
         let vec = if size == 0 {
-            trace!("No BodyBuf");
             None
         } else {
-            trace!("BodyBuf with capacity: {}", size);
             Some(Vec::with_capacity(size))
         };
         BodyBuf {

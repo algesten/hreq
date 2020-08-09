@@ -317,7 +317,7 @@
 //! [`charset_decode_target`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_decode_target
 //! [serde]: https://crates.io/crates/serde
 #[macro_use]
-extern crate log;
+extern crate tracing;
 
 mod async_impl;
 mod block_ext;

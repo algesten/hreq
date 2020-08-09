@@ -105,7 +105,6 @@ impl From<hreq_h1::Error> for Error {
     fn from(e: hreq_h1::Error) -> Self {
         match e {
             hreq_h1::Error::User(v) => Error::User(v),
-            hreq_h1::Error::Proto(v) => Error::Proto(v),
             hreq_h1::Error::Io(v) => Error::Io(v),
             hreq_h1::Error::Http11Parser(v) => Error::Http11Parser(v),
             hreq_h1::Error::Http(v) => Error::Http(v),
