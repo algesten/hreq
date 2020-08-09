@@ -54,7 +54,7 @@ pub fn setup_logger() {
         let test_log = std::env::var("TEST_LOG")
             .map(|x| x != "0" && x.to_lowercase() != "false")
             .unwrap_or(false);
-        let level = if test_log { Level::TRACE } else { Level::INFO };
+        let level = if test_log { Level::TRACE } else { Level::ERROR };
 
         let sub = FmtSubscriber::builder()
             .with_env_filter("hreq=trace,hreq_h1=trace,hreq_h2=trace")
