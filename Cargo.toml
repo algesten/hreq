@@ -20,7 +20,7 @@ default = [
     # "async-std",
     "gzip",
     "tls",
-    # "server"
+    "server"
 ]
 async-std = [
     "async-std-lib",
