@@ -392,7 +392,7 @@ pub mod prelude {
 
     #[cfg(feature = "server")]
     #[doc(no_inline)]
-    pub use crate::server::{MethodHandlers, ResponseBuilderExt, Router, Server, ServerRequestExt};
+    pub use crate::server::{ResponseBuilderExt, Router, Server, ServerRequestExt};
 }
 
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}

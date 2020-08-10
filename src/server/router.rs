@@ -5,6 +5,7 @@ use super::Route;
 use crate::Body;
 use http::Request;
 use http::Response;
+use std::fmt;
 use std::future::Future;
 use std::sync::Arc;
 use tracing_futures::Instrument;
@@ -24,6 +25,39 @@ impl PartialEq<http::Method> for RouteMethod {
     }
 }
 
+/// Encapsulate chains of [`Middleware`] and [`Handler`].
+///
+/// Inside [`Server`] there is always a default router which is configured
+/// via [`Server::at`], however routers can also be instantiated and configured
+/// separately. This can be a good strategy for complex servers with many
+/// subsystems.
+///
+/// # Example
+///
+///  ```
+///  use hreq::prelude::*;
+///
+///  async fn start_server() {
+///     let mut server = Server::new();
+///
+///     let mut router = Router::new();
+///     router.at("/hello/:name").get(hello_there);
+///
+///     // Resulting route is /much/hello/<name>
+///     server.at("/much").router(router);
+///
+///     server.listen(3000).await.unwrap();
+///  }
+///
+///  async fn hello_there(req: http::Request<Body>) -> String {
+///     format!("Hello {}", req.path_param("name").unwrap())
+///  }
+///  ```
+///
+/// [`Middleware`]: trait.Middleware.html
+/// [`Handler`]: trait.Handler.html
+/// [`Server`]: struct.Server.html
+/// [`Server::at`]: struct.Server.html#method.at
 #[derive(Clone)]
 pub struct Router<State> {
     prefix: String,
@@ -34,6 +68,7 @@ impl<State> Router<State>
 where
     State: Clone + Unpin + Send + Sync + 'static,
 {
+    /// Creates a new router.
     pub fn new() -> Router<State> {
         Router {
             prefix: "".into(),
@@ -46,6 +81,15 @@ where
         self.prefix = prefix.into();
     }
 
+    /// Configure an route for this server.
+    ///
+    /// A route is a chain of zero or more [`Middleware`]
+    /// followed by a [`Handler`].
+    ///
+    /// Reusing the same `path` will overwrite the previous config.
+    ///
+    /// [`Middleware`]: trait.Middleware.html
+    /// [`Handler`]: trait.Handler.html
     pub fn at(&mut self, path: &str) -> Route<'_, State> {
         let path = ParsedPath::parse(path);
         self.reset(&path);
@@ -121,8 +165,6 @@ impl<State> Endpoint<State> {
     }
 }
 
-use std::fmt;
-
 impl<State> fmt::Debug for Endpoint<State> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -130,5 +172,11 @@ impl<State> fmt::Debug for Endpoint<State> {
             "Endpoint {{ method: {:?}, path: {:?}, chain: {:?} }}",
             self.method, self.path, self.chain
         )
+    }
+}
+
+impl<State> fmt::Debug for Router<State> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Router")
     }
 }

@@ -19,11 +19,123 @@ use http::Response;
 /// | `&Vec<u8>`                | application/octet-stream    | `&vec![65,66,67]`        |
 /// | `std::fs::File`           | application/octet-stream    | NB. Only with tokio      |
 /// | [`Body`]                  | Body determined             |                          |
-/// | `Response<Into<Body>>`    | `Response` and fallback to [`Body`] |                  |
 /// | `Result<Into<Body>, Into<Error>>` | See [`Body`]        |                          |
-/// | `Result<Response<Into<Body>>, Into<Error>>` | `Response and falllback to [`Body`]  |
+/// | `Response<Into<Body>>`    | `Response` and fallback to [`Body`] |                  |
+/// | `Result<Response<Into<Body>>, Into<Error>>` | `Response` and falllback to [`Body`] |
 /// | `Option<Into<Reply>>`     | 404 on `None`               |                          |
 ///
+/// # Examples
+///
+/// ```
+/// async fn handle(req: http::Request<hreq::Body>) {
+///     // 200 with empty reply
+/// }
+/// ```
+///
+/// ```
+/// async fn handle(req: http::Request<hreq::Body>) -> &'static str {
+///     "Hello World!" // 200 with text/plain body
+/// }
+/// ```
+///
+/// ```
+/// async fn handle(req: http::Request<hreq::Body>) -> &'static str {
+///     "Hello World!" // 200 with text/plain body
+/// }
+/// ```
+///
+/// ```
+/// async fn handle(req: http::Request<hreq::Body>) -> String {
+///     format!("Hello there {}", req.uri().path()) // 200 with text/plain body
+/// }
+/// ```
+///
+/// ```
+/// async fn handle(req: http::Request<hreq::Body>) -> &'static [u8] {
+///     &[79, 75, 10] // 200 with application/octet-stream
+/// }
+/// ```
+///
+/// ```
+/// async fn handle(req: http::Request<hreq::Body>) -> Vec<u8> {
+///     vec![79, 75, 10] // 200 with application/octet-stream
+/// }
+/// ```
+///
+/// ```
+/// use hreq::Body;
+///
+/// async fn handle(req: http::Request<Body>) -> Body {
+///     let data = vec![79, 75, 10];
+///     let len = data.len() as u64;
+///     let cursor = std::io::Cursor::new(data);
+///     Body::from_sync_read(cursor, Some(len)) // check Body doc for more
+/// }
+/// ```
+///
+/// ```
+/// use hreq::Body;
+///
+/// async fn handle(
+///     req: http::Request<Body>
+/// ) -> Result<&'static str, hreq::Error> {
+///     let file = std::fs::File::open("/etc/bashrc")?;
+///     Ok("File opened OK")
+/// }
+/// ```
+///
+/// ```
+/// use hreq::prelude::*;
+///
+/// async fn handle(req: http::Request<hreq::Body>) -> http::Response<()> {
+///     http::Response::builder()
+///         .status(302)
+///         .header("location", "/see-my-other-page")
+///         .body(())
+///         .unwrap()
+/// }
+/// ```
+///
+/// ```
+/// use hreq::prelude::*;
+///
+/// async fn handle(
+///     req: http::Request<hreq::Body>
+/// ) -> http::Response<&'static str> {
+///     http::Response::builder()
+///         .header("X-My-Exotic-Header", "Cool")
+///         .body("Hello World!")
+///         .unwrap()
+/// }
+/// ```
+///
+/// ```
+/// use hreq::prelude::*;
+///
+/// async fn handle(
+///     req: http::Request<hreq::Body>
+/// ) -> Result<http::Response<String>, hreq::Error> {
+///     let no = 42;
+///
+///     Ok(http::Response::builder()
+///         .header("X-My-Exotic-Header", "Cool")
+///         .body(format!("Hello World!, {}", no))?)
+/// }
+/// ```
+///
+/// ```
+/// use hreq::prelude::*;
+///
+/// async fn handle(
+///     req: http::Request<hreq::Body>
+/// ) -> Option<String> {
+///     let no = 42;
+///
+///     Some(format!("Hello World!, {}", no))
+/// }
+/// ```
+///
+/// [`Body`]: ../struct.Body.html
 #[derive(Debug)]
 pub struct Reply(Result<Response<Body>, Error>);
 

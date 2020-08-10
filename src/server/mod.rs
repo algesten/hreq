@@ -35,7 +35,7 @@ pub use handler::{Handler, StateHandler};
 pub use middle::{Middleware, StateMiddleware};
 pub use reply::Reply;
 pub use resb_ext::ResponseBuilderExt;
-pub use route::{MethodHandlers, Route, StateRoute};
+pub use route::{Route, StateRoute};
 pub use router::Router;
 pub use serv_handle::ServerHandle;
 pub use serv_req_ext::ServerRequestExt;
@@ -73,9 +73,20 @@ where
         &*self.state
     }
 
-    /// Add a route to the server.
+    /// Configure a route for this server.
     ///
-    /// Routes must be added before the call to `listen`.
+    /// A route is a chain of zero or more [`Middleware`]
+    /// followed by a [`Handler`].
+    ///
+    /// All routes must be added before the call to `listen`. This configures
+    /// the default [`Router`] in the server. It's possible to configiure
+    /// separate routers and attach them later.
+    ///
+    /// Reusing the same `path` will overwrite the previous config.
+    ///
+    /// [`Middleware`]: trait.Middleware.html
+    /// [`Handler`]: trait.Handler.html
+    /// [`Router`]: struct.Router.html
     pub fn at(&mut self, path: &str) -> Route<'_, State> {
         self.router.at(path)
     }

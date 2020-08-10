@@ -100,6 +100,7 @@ where
 /// use hreq::Error;
 /// use hreq::prelude::*;
 /// use hreq::server::Next;
+/// use std::sync::{Arc, Mutex};
 ///
 /// #[derive(Clone)]
 /// struct MyState(Arc<Mutex<String>>);
@@ -111,7 +112,7 @@ where
 ///    server.at("/path")
 ///        .with_state()
 ///        .middleware(my_middle)
-///        .get(|_req| async { "Hello" });
+///        .get(|state, req| async { "Hello" });
 /// }
 ///
 /// async fn my_middle(

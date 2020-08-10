@@ -453,9 +453,10 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use hreq::Body;
+    /// ```
     /// use serde_derive::Serialize;
+    /// use hreq::prelude::*;
+    /// use hreq::Body;
     ///
     /// #[derive(Serialize)]
     /// struct MyJsonThing {
@@ -464,11 +465,11 @@ where
     /// }
     ///
     /// let json = MyJsonThing {
-    ///   name: "Karl Kajal",
-    ///   age: "32",
+    ///   name: "Karl Kajal".into(),
+    ///   age: "32".into(),
     /// };
     ///
-    /// let req = Request::post("http://foo")
+    /// let req = http::Request::post("http://foo")
     ///   .with_json(&json);
     /// ```
     fn with_json<B: Serialize + ?Sized>(self, body: &B) -> http::Result<Request<Body>>;
