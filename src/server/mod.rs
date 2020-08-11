@@ -1,4 +1,108 @@
 //! Server that handles http requests.
+//!
+//! hreq can act as an http server. It supports [path] based [routing] to functions
+//! acting as [handlers], [middleware] chains and [state handling].
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use hreq::prelude::*;
+//! use hreq::server::Next;
+//!
+//! async fn start_server() {
+//!    // Server without a state
+//!    let mut server = Server::new();
+//!
+//!    // route requests for /hello/<name> where
+//!    // "name" is a path parameter that can
+//!    // be obtained in the request handler.
+//!    server.at("/hello/:name")
+//!        // logging middleware
+//!        .middleware(logging)
+//!        // dispatch to the handler
+//!        .get(hello_there);
+//!
+//!    // Listen without TLS
+//!    let (handle, addr) = server.listen(3000).await.unwrap();
+//!
+//!    println!("Server listening to: {}", addr);
+//!
+//!    handle.keep_alive().await;
+//! }
+//!
+//! // Middleware logging request and response
+//! async fn logging(
+//!    req: http::Request<Body>, next: Next
+//! ) -> http::Response<Body> {
+//!
+//!     println!("Request is: {:?}", req);
+//!     let res = next.run(req).await.unwrap();
+//!     println!("Response is: {:?}", res);
+//!
+//!     res
+//! }
+//!
+//! // Handler of request producing responses. The String is
+//! // converted to a 200 response with text/plain.
+//! async fn hello_there(req: http::Request<Body>) -> String {
+//!    format!("Hello {}", req.path_param("name").unwrap())
+//! }
+//! ```
+//!
+//! # State
+//!
+//! Many servers needs to work over some shared mutable state to function.
+//! The server runs in an async runtime such as async-std or tokio, typically
+//! with multiple threads accepting connections. Therefore the state needs
+//! to be both safe to share between threads [`Sync`] as well being
+//! clonable with [`Clone`].
+//!
+//! In practice this often means using a strategy seen in a lot of Rust code:
+//! wrapping the state in `Arc<Mutex<State>>`.
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use hreq::prelude::*;
+//! use std::sync::{Arc, Mutex};
+//!
+//! #[derive(Clone)]
+//! struct MyCounter(Arc<Mutex<u64>>);
+//!
+//! async fn start_server() {
+//!    // Shared state
+//!    let state = MyCounter(Arc::new(Mutex::new(0)));
+//!    // Server with a state
+//!    let mut server = Server::with_state(state);
+//!
+//!    server.at("/do_something")
+//!        // use stateful middleware/handlers
+//!        .with_state()
+//!        .get(my_handler);
+//!
+//!    let (handle, addr) = server.listen(3000).await.unwrap();
+//!
+//!    handle.keep_alive().await;
+//! }
+//!
+//! async fn my_handler(
+//!     counter: MyCounter,
+//!     req: http::Request<Body>
+//! ) -> String {
+//!     let mut lock = counter.0.lock().unwrap();
+//!     let req_count = *lock;
+//!     *lock += 1;
+//!     format!("Req number: {}", req_count)
+//! }
+//! ```
+//!
+//! [path]: struct.Server.html#method.at
+//! [routing]: struct.Router.html
+//! [handlers]: trait.Handler.html
+//! [middleware]: trait.Middleware.html
+//! [state handling]: struct.Route.html#method.with_state
+//! [`Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
+//! [`Clone`]: https://doc.rust-lang.org/std/clone/trait.Clone.html
 
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;
