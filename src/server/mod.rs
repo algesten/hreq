@@ -54,7 +54,7 @@
 //! Many servers needs to work over some shared mutable state to function.
 //! The server runs in an async runtime such as async-std or tokio, typically
 //! with multiple threads accepting connections. Therefore the state needs
-//! to be both safe to share between threads [`Sync`] as well being
+//! to be shareable between threads, in rust terms [`Sync`], as well being
 //! clonable with [`Clone`].
 //!
 //! In practice this often means using a strategy seen in a lot of Rust code:

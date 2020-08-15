@@ -280,6 +280,30 @@ let json = MyJsonThing {
 let body = Body::from_json(&json);
 ```
 
+## Server
+
+hreq started as a client but now also got a simple server mechanism. It
+can route requests, use middleware, handle state and serve TLS.
+
+See the [`server module doc`] for more details.
+
+```rust
+use hreq::prelude::*;
+
+fn main() {
+    let mut server = Server::new();
+    server.at("/hello/:name").get(hello_there);
+    let (shut, addr) = server.listen(0).block().expect("Failed to listen");
+    println!("Listening to: {}", addr);
+    shut.shutdown().block();
+}
+
+async fn hello_there(req: http::Request<Body>) -> String {
+    let name = req.path_param("name").unwrap();
+    format!("Hello there {}!\n", name)
+}
+```
+
 ## Capabilities
 
 * Async or blocking
@@ -314,5 +338,6 @@ let body = Body::from_json(&json);
 [`charset_encode_source`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_encode_source
 [`charset_decode_target`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_decode_target
 [serde]: https://crates.io/crates/serde
+[`server module doc`]: server/index.html
 
 License: MIT/Apache-2.0
