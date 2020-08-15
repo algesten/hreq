@@ -83,6 +83,7 @@ impl Connection {
         Arc::strong_count(&self.unfinished_reqs) - 1 // -1 for self
     }
 
+    #[instrument(skip(self, req, body_buffer))]
     pub async fn send_request(
         &mut self,
         req: http::Request<Body>,

@@ -6,7 +6,7 @@ use std::io::BufReader;
 mod common;
 
 #[test]
-fn from_charset_iso8859() -> Result<(), Error> {
+fn from_charset_iso8859_ok() -> Result<(), Error> {
     common::setup_logger();
 
     let server = iso8859_server();

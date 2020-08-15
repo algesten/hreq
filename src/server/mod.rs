@@ -329,6 +329,7 @@ where
     /// Manually dispatch a request to this server.
     ///
     /// This is mainly useful for building tests without binding a port.
+    #[instrument(skip(self, req))]
     pub async fn handle<B: Into<Body>>(
         &self,
         req: http::Request<B>,
