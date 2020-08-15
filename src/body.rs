@@ -567,7 +567,7 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://www.google.com")
+    /// let mut resp = Request::get("https://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let mut data = vec![0_u8; 100];
@@ -575,7 +575,7 @@ impl Body {
     /// let amount = resp.body_mut().read(&mut data[..]).block().unwrap();
     ///
     /// assert!(amount >= 15);
-    /// assert_eq!(&data[..15], b"<!doctype html>");
+    /// assert_eq!(&data[..15], b"<!DOCTYPE html>");
     /// ```
     ///
     /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
@@ -597,12 +597,12 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://www.google.com")
+    /// let mut resp = Request::get("https://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let data = resp.body_mut().read_to_vec().block().unwrap();
     ///
-    /// assert_eq!(&data[..15], b"<!doctype html>");
+    /// assert_eq!(&data[..15], b"<!DOCTYPE html>");
     /// ```
     ///
     /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
@@ -638,12 +638,12 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://www.google.com")
+    /// let mut resp = Request::get("https://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let data = resp.body_mut().read_to_string().block().unwrap();
     ///
-    /// assert_eq!(&data[..15], "<!doctype html>");
+    /// assert_eq!(&data[..15], "<!DOCTYPE html>");
     /// ```
     ///
     /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
@@ -694,7 +694,7 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://www.google.com")
+    /// let mut resp = Request::get("https://httpbin.org/get")
     ///     .call().block().unwrap();
     ///
     /// resp.body_mut().read_to_end();

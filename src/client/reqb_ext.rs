@@ -50,7 +50,7 @@ where
     /// use hreq::prelude::*;
     /// use std::time::Duration;
     ///
-    /// let req = Request::get("https://www.google.com/")
+    /// let req = Request::get("https://httpbin.org/get/")
     ///     .timeout(Duration::from_nanos(1))
     ///     .call().block();
     ///
@@ -67,7 +67,7 @@ where
     /// ```no_run
     /// use hreq::prelude::*;
     ///
-    /// let req = Request::get("https://www.google.com/")
+    /// let req = Request::get("https://httpbin.org/get/")
     ///     .timeout_millis(10_000)
     ///     .call().block();
     ///
@@ -406,10 +406,10 @@ where
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let res1 = Request::get("https://www.google.com")
+    /// let res1 = Request::get("https://httpbin.org/get")
     ///     .call().block();
     ///
-    /// let res2 = Request::get("https://www.google.com")
+    /// let res2 = Request::get("https://httpbin.org/get")
     ///     .with_body(()) // constructs the Request
     ///     .unwrap()
     ///     .send().block();
@@ -441,7 +441,7 @@ where
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let res = Request::get("https://www.google.com")
+    /// let res = Request::get("https://httpbin.org/get")
     ///     .call().block();
     /// ```
     async fn call(self) -> Result<Response<Body>, Error>;

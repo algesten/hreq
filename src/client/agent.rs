@@ -46,7 +46,7 @@ static AGENT_COUNT: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 /// let mut agent = Agent::new();
 /// agent.retries(0); // disable all retries
 ///
-/// let req = Request::get("https://www.google.com")
+/// let req = Request::get("https://httpbin.org/get")
 ///     .with_body(()).unwrap();
 ///
 /// let res = agent.send(req).block();

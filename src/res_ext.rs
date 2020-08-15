@@ -21,12 +21,12 @@ pub trait ResponseExt {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let res = Request::get("https://www.google.com")
+    /// let res = Request::get("https://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
-    /// let x_frame_opts = res.header("x-frame-options").unwrap();
+    /// let ctype = res.header("content-type").unwrap();
     ///
-    /// assert_eq!(x_frame_opts, "SAMEORIGIN");
+    /// assert_eq!(ctype, "text/html; charset=utf-8");
     /// ```
     fn header(&self, key: &str) -> Option<&str>;
 
@@ -53,7 +53,7 @@ pub trait ResponseExt {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let res = Request::get("https://www.google.com")
+    /// let res = Request::get("https://httpbin.org/get")
     ///     .call().block().unwrap();
     ///
     /// assert_eq!(res.status_code(), 200);

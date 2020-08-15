@@ -12,8 +12,8 @@
 //! The principles of this library are:
 //!
 //! * User first API built on the http crate.
-//! * Blocking or async.
-//! * Pure rust.
+//! * async (or blocking via minimal runtime).
+//! * Pure Rust.
 //!
 //! ```no_run
 //! use hreq::prelude::*;
@@ -80,22 +80,21 @@
 //! ```
 //! use hreq::prelude::*;
 //!
-//! let res = Request::get("https://www.google.com")
+//! let res = Request::get("https://httpbin.org/get")
 //!     .call().block();
 //! ```
 //!
 //! ## Why?
 //!
 //! hreq is async through-and-through and ultimately relies on an
-//! async variant of [`TcpStream`] for it to function. `TcpStream` in
-//! turn needs to be provided by the runtime (tokio or async-std)
-//! because the TCP socket is one of those things that is tightly
-//! integrated with the async event loop.
+//! async variant of [`TcpStream`] for it to function. Because the
+//! TCP socket is one of those things that is tightly coupled to
+//! the async event loop, `TcpStream` in turn needs to be provided
+//! by the runtime (tokio or async-std)
 //!
 //! There are talks of rust providing a simple single threaded
 //! executor as part of the std lib. This only solves half of the
-//! problem since `TcpStream` is tightly integrated with the event
-//! loop and (so far) that is not considered for std.
+//! problem since `TcpStream` is coupled with the runtime.
 //!
 //! # Async runtime
 //!
@@ -132,11 +131,11 @@
 //! ```
 //! use hreq::prelude::*;
 //!
-//! let res1 = Request::get("https://www.google.com")
+//! let res1 = Request::get("https://httpbin.org/get")
 //!     .call().block();  // creates a new agent
 //!
 //! // this call doesn't reuse any cookies or connections.
-//! let res2 = Request::get("https://www.google.com")
+//! let res2 = Request::get("https://httpbin.org/get")
 //!     .call().block();  // creates another new agent
 //! ```
 //!
@@ -149,12 +148,12 @@
 //!
 //! let mut agent = Agent::new();
 //!
-//! let req1 = Request::get("https://www.google.com")
+//! let req1 = Request::get("https://httpbin.org/get")
 //!     .with_body(()).unwrap();
 //!
 //! let res1 = agent.send(req1).block();
 //!
-//! let req2 = Request::get("https://www.google.com")
+//! let req2 = Request::get("https://httpbin.org/get")
 //!     .with_body(()).unwrap();
 //!
 //! // this call (tries to) reuse the connection in
@@ -183,7 +182,7 @@
 //! let mut agent = Agent::new();
 //! agent.retries(0); // disable all retries
 //!
-//! let req = Request::get("https://www.google.com")
+//! let req = Request::get("https://httpbin.org/get")
 //!     .with_body(()).unwrap();
 //!
 //! let res = agent.send(req).block();

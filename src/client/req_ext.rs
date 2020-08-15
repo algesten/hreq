@@ -28,7 +28,7 @@ pub trait RequestExt {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let req = Request::get("https://www.google.com")
+    /// let req = Request::get("https://httpbin.org/get")
     ///     .header("x-my-head", "whatnow")
     ///     .with_body(()).unwrap();
     ///
@@ -75,7 +75,7 @@ pub trait RequestExt {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let req = Request::get("https://www.google.com")
+    /// let req = Request::get("https://httpbin.org/get")
     ///     .with_body(()).unwrap();
     ///
     /// req.send().block();

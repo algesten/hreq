@@ -32,7 +32,7 @@ use std::future::Future;
 /// ```
 /// use hreq::prelude::*;
 ///
-/// let res = Request::get("https://www.google.com")
+/// let res = Request::get("https://httpbin.org/get")
 ///     .call().block();
 /// ```
 ///
@@ -43,14 +43,14 @@ use std::future::Future;
 /// use hreq::prelude::*;
 ///
 /// let body_str = async {
-///     let res = Request::get("https://www.google.com")
+///     let res = Request::get("https://httpbin.org/html")
 ///         .call().await?;
 ///
 ///     let mut body = res.into_body();
 ///     body.read_to_string().await
 /// }.block().unwrap();
 ///
-/// assert_eq!(&body_str.as_bytes()[0..15], b"<!doctype html>");
+/// assert_eq!(&body_str.as_bytes()[0..15], b"<!DOCTYPE html>");
 /// ```
 ///
 /// # Technical note
