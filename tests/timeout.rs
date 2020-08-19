@@ -6,6 +6,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+mod common;
+
 struct NeverRead;
 
 impl AsyncRead for NeverRead {
@@ -20,6 +22,8 @@ impl AsyncRead for NeverRead {
 
 #[test]
 fn request_body_timeout() -> Result<(), Error> {
+    common::setup_logger();
+
     let mut server = Server::new();
 
     server
@@ -46,6 +50,8 @@ fn request_body_timeout() -> Result<(), Error> {
 
 #[test]
 fn response_body_timeout() -> Result<(), Error> {
+    common::setup_logger();
+
     let mut server = Server::new();
 
     server
@@ -57,14 +63,17 @@ fn response_body_timeout() -> Result<(), Error> {
     let uri = format!("http://127.0.0.1:{}/path", addr.port());
 
     let res = http::Request::get(&uri)
-        .timeout(Duration::from_millis(200))
+        .timeout(Duration::from_millis(1000))
         .call()
-        .block()?;
+        .block();
+
+    let res = res?;
 
     // we do get a response, but reading the body times out.
     assert_eq!(res.status(), 200);
 
     let r = res.into_body().read_to_vec().block();
+
     assert!(r.is_err());
     let err = r.unwrap_err();
     assert!(err.is_io());

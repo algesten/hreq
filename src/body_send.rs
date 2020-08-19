@@ -11,13 +11,6 @@ pub(crate) enum BodySender {
 }
 
 impl BodySender {
-    pub async fn ready(self) -> Result<Self, Error> {
-        match self {
-            BodySender::H1(s) => Ok(BodySender::H1(s.ready().await?)),
-            BodySender::H2(s) => Ok(BodySender::H2(s)),
-        }
-    }
-
     pub async fn send_data(&mut self, mut buf: &[u8]) -> Result<(), Error> {
         match self {
             BodySender::H1(s) => Ok(s.send_data(buf, false).await?),

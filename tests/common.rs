@@ -59,7 +59,7 @@ pub fn setup_logger() {
         let sub = FmtSubscriber::builder()
             .with_env_filter("hreq=trace,hreq_h1=trace,hreq_h2=trace")
             .with_max_level(level)
-            .with_span_events(FmtSpan::CLOSE)
+            // .with_span_events(FmtSpan::CLOSE)
             .finish();
 
         tracing::subscriber::set_global_default(sub).expect("tracing set_global_default");

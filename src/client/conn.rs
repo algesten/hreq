@@ -193,9 +193,6 @@ async fn send_req(
                 }
             }
 
-            // wait for body_send to be able to receive more data
-            body_send = body_send.ready().await?;
-
             let mut amount_read = 0;
 
             // use buffered body (from a potential earlier 307/308 redirect)

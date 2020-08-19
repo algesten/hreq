@@ -151,15 +151,12 @@ impl SendResponse {
         configure_response(&mut parts, &body, self.is_http2());
 
         let res = http::Response::from_parts(parts, ());
-        let mut body_send = self.do_send(res)?;
+        let mut body_send = self.do_send(res).await?;
 
         if !body.is_definitely_no_body() {
             loop {
                 // This buffer must be less than h2 window size
                 let mut buf = vec![0_u8; BUF_SIZE];
-
-                // Wait for body_send to be able to receive more data
-                body_send = body_send.ready().await?;
 
                 let amount_read = body.read(&mut buf[..]).await?;
 
@@ -177,10 +174,10 @@ impl SendResponse {
         Ok(())
     }
 
-    fn do_send(self, res: http::Response<()>) -> Result<BodySender, Error> {
+    async fn do_send(self, res: http::Response<()>) -> Result<BodySender, Error> {
         Ok(match self {
             SendResponse::H1(send) => {
-                let send_body = send.send_response(res, false)?;
+                let send_body = send.send_response(res, false).await?;
                 BodySender::H1(send_body)
             }
             SendResponse::H2(mut send) => {
@@ -195,7 +192,7 @@ impl SendResponse {
 
         let res = http::Response::builder().status(500).body(()).unwrap();
 
-        let mut body_send = self.do_send(res)?;
+        let mut body_send = self.do_send(res).await?;
 
         body_send.send_end().await?;
 
