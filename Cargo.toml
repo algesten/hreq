@@ -52,7 +52,7 @@ encoding_rs = "0.8"
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
-hreq-h1 = { version = "0.3.2" }
+hreq-h1 = { version = "0.3.3" }
 hreq-h2 = { version = "0.2.6" }
 http = "0.2"
 httparse = "1"
