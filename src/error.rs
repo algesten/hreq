@@ -27,6 +27,9 @@ pub enum Error {
     /// TLS (https) errors.
     #[cfg(feature = "tls")]
     TlsError(TLSError),
+    #[cfg(feature = "tls")]
+    /// Failure to convert a domain name as TLS cert name.
+    DnsName(webpki::InvalidDNSNameError),
     /// Failure to parse an address that the server will listen to.
     #[cfg(feature = "server")]
     AddrParse(net::AddrParseError),
@@ -87,6 +90,8 @@ impl fmt::Display for Error {
             Error::Json(v) => write!(f, "json: {}", v),
             #[cfg(feature = "tls")]
             Error::TlsError(v) => write!(f, "tls: {}", v),
+            #[cfg(feature = "tls")]
+            Error::DnsName(v) => write!(f, "dns name: {}", v),
             #[cfg(feature = "server")]
             Error::AddrParse(v) => write!(f, "addr parse: {}", v),
         }
@@ -138,6 +143,13 @@ impl From<serde_json::Error> for Error {
 impl From<TLSError> for Error {
     fn from(e: TLSError) -> Self {
         Error::TlsError(e)
+    }
+}
+
+#[cfg(feature = "tls")]
+impl From<webpki::InvalidDNSNameError> for Error {
+    fn from(e: webpki::InvalidDNSNameError) -> Self {
+        Error::DnsName(e)
     }
 }
 

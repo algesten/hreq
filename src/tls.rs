@@ -23,9 +23,11 @@ use webpki_roots::TLS_SERVER_ROOTS;
 /// the negotiation is returned with the wrapped stream.
 ///
 /// [`protocol`]: ../proto/enum.Protocol.html
+#[instrument(skip(stream, domain))]
 pub(crate) async fn wrap_tls_client(
     stream: impl Stream,
     domain: &str,
+    tls_disable_verify: bool,
 ) -> Result<(impl Stream, Protocol), Error> {
     //
     let mut config = ClientConfig::new();
@@ -34,20 +36,43 @@ pub(crate) async fn wrap_tls_client(
         .root_store
         .add_server_trust_anchors(&TLS_SERVER_ROOTS);
 
+    if tls_disable_verify {
+        config
+            .dangerous()
+            .set_certificate_verifier(Arc::new(DisabledCertVerified));
+    }
+
     config.alpn_protocols = vec![ALPN_H2.to_owned(), ALPN_H1.to_owned()];
 
     let config = Arc::new(config);
-    let dnsname = DNSNameRef::try_from_ascii_str(domain).expect("Not a valid DNS name");
+    let dnsname = DNSNameRef::try_from_ascii_str(domain)?;
 
     let client = ClientSession::new(&config, dnsname);
 
     let mut tls = TlsStream::new(stream, client);
 
-    poll_fn(|cx| Pin::new(&mut tls).poll_handshake(cx)).await?;
+    let ret = poll_fn(|cx| Pin::new(&mut tls).poll_handshake(cx)).await;
+    trace!("tls handshake: {:?}", ret);
+    ret?;
 
     let proto = Protocol::from_alpn(tls.tls.get_alpn_protocol());
 
     Ok((tls, proto))
+}
+
+struct DisabledCertVerified;
+
+impl rustls::ServerCertVerifier for DisabledCertVerified {
+    fn verify_server_cert(
+        &self,
+        _: &rustls::RootCertStore,
+        _: &[rustls::Certificate],
+        name: DNSNameRef,
+        _: &[u8],
+    ) -> Result<rustls::ServerCertVerified, rustls::TLSError> {
+        warn!("Ignoring TLS verification for {:?}", name);
+        Ok(rustls::ServerCertVerified::assertion())
+    }
 }
 
 #[cfg(feature = "server")]
@@ -59,6 +84,7 @@ pub(crate) fn configure_tls_server(config: &mut ServerConfig) {
 }
 
 #[cfg(feature = "server")]
+#[instrument(skip(stream, config))]
 pub(crate) async fn wrap_tls_server(
     stream: impl Stream,
     config: Arc<ServerConfig>,
@@ -69,7 +95,9 @@ pub(crate) async fn wrap_tls_server(
 
     let mut tls = TlsStream::new(stream, server);
 
-    poll_fn(|cx| Pin::new(&mut tls).poll_handshake(cx)).await?;
+    let ret = poll_fn(|cx| Pin::new(&mut tls).poll_handshake(cx)).await;
+    trace!("tls handshake: {:?}", ret);
+    ret?;
 
     let proto = Protocol::from_alpn(tls.tls.get_alpn_protocol());
 

@@ -218,7 +218,8 @@ impl AsyncRuntime {
         }
     }
 
-    pub(crate) fn spawn<T: Future + Send + 'static>(task: T) {
+    #[doc(hidden)]
+    pub fn spawn<T: Future + Send + 'static>(task: T) {
         use Inner::*;
         match current() {
             AsyncStd => async_std::spawn(task),

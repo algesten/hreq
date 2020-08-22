@@ -299,13 +299,19 @@ impl Agent {
                     let hostport_uri = uri.host_port()?;
                     let mut conn: Option<Connection> = None;
 
+                    let HReqParams {
+                        force_http2,
+                        tls_disable_verify,
+                        ..
+                    } = params;
+
                     // if the current request is for the same uri (hostport part) as
                     // the original uri, we will use the override.
                     if orig_hostport == hostport_uri {
                         if let Some(arc) = params.with_override.clone() {
                             let hostport = &*arc;
                             debug!("Connect new: {} with override: {}", uri, hostport);
-                            conn = Some(connect(hostport, params.force_http2).await?);
+                            conn = Some(connect(hostport, force_http2, tls_disable_verify).await?);
                         }
                     }
 
@@ -314,7 +320,7 @@ impl Agent {
                         // no override for this connection.
                         None => {
                             debug!("Connect new: {}", hostport_uri);
-                            connect(&hostport_uri, params.force_http2).await?
+                            connect(&hostport_uri, force_http2, tls_disable_verify).await?
                         }
                     };
 

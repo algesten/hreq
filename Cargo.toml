@@ -78,7 +78,7 @@ tokio-lib = { package = "tokio", version = "0.2", default-features = false, feat
 async-compression = { version = "0.3", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
 
 ## tls
-rustls = { version = "0.18.0", default-features = false, features = [], optional = true }
+rustls = { version = "0.18", default-features = false, features = ["dangerous_configuration"], optional = true }
 webpki = { version = "0.21", optional = true }
 webpki-roots = { version = "0.20", optional = true }
 

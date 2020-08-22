@@ -25,6 +25,7 @@ use conn::ProtocolImpl;
 pub(crate) async fn connect(
     host_port: &HostPort<'_>,
     force_http2: bool,
+    tls_disable_verify: bool,
 ) -> Result<Connection, Error> {
     // "host:port"
     let addr = host_port.to_string();
@@ -39,7 +40,8 @@ pub(crate) async fn connect(
             use crate::tls::wrap_tls_client;
             if host_port.is_tls() {
                 // wrap in tls
-                let (tls, proto) = wrap_tls_client(tcp, host_port.host()).await?;
+                let (tls, proto) =
+                    wrap_tls_client(tcp, host_port.host(), tls_disable_verify).await?;
                 (Either::A(tls), proto)
             } else {
                 // use tcp

@@ -358,6 +358,16 @@ where
     /// [`Uri`]: https://docs.rs/http/latest/http/uri/struct.Uri.html
     fn with_override(self, host: &str, port: u16, tls: bool) -> Self;
 
+    /// Disables verification of server certificate.
+    ///
+    /// This is generally a bad idea. With verification turned off, anyone can intercept
+    /// the TLS traffic, present a random certificate and pretend to be the server.
+    /// In today's world, no production code should disable this.
+    ///
+    /// However it might be appropriate to use in some localhost developer scenarios,
+    /// unit tests, etc.
+    fn tls_disable_server_cert_verify(self, disable: bool) -> Self;
+
     /// Finish building the request by providing something as [`Body`].
     ///
     /// [`Body`] implements a number of conventient `From` traits. We can trivially construct
@@ -572,6 +582,12 @@ impl RequestBuilderExt for request::Builder {
     fn with_override(self, host: &str, port: u16, tls: bool) -> Self {
         with_hreq_params(self, |params| {
             params.with_override = Some(Arc::new(HostPort::new(host, port, tls)));
+        })
+    }
+
+    fn tls_disable_server_cert_verify(self, disable: bool) -> Self {
+        with_hreq_params(self, |params| {
+            params.tls_disable_verify = disable;
         })
     }
 
