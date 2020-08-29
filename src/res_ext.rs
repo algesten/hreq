@@ -21,7 +21,7 @@ pub trait ResponseExt {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let res = Request::get("https://httpbin.org/html")
+    /// let res = Request::get("http://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let ctype = res.header("content-type").unwrap();
@@ -53,7 +53,7 @@ pub trait ResponseExt {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let res = Request::get("https://httpbin.org/get")
+    /// let res = Request::get("http://httpbin.org/get")
     ///     .call().block().unwrap();
     ///
     /// assert_eq!(res.status_code(), 200);

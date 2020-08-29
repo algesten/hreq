@@ -2,6 +2,8 @@ use hreq::prelude::*;
 use hreq::Error;
 use std::io;
 
+mod common;
+
 #[test]
 fn sane_headers_with_size10() -> Result<(), Error> {
     let mut server = Server::new();
@@ -71,12 +73,17 @@ fn sane_headers_with_no_size() -> Result<(), Error> {
 }
 
 #[test]
+#[cfg(feature = "gzip")]
 fn sane_headers_with_content_enc() -> Result<(), Error> {
+    common::setup_logger();
+
     let mut server = Server::new();
 
     server
         .at("/path")
         .all(|req: http::Request<Body>| async move {
+            println!("{:?}", req);
+
             assert_eq!(req.header("transfer-encoding"), Some("chunked"));
             assert_eq!(req.header("content-length"), None);
             assert_eq!(req.header("content-encoding"), Some("gzip"));
@@ -85,6 +92,8 @@ fn sane_headers_with_content_enc() -> Result<(), Error> {
             "ok"
         });
 
+    // gzip triggers transfer-encoding chunked. without gzip support,
+    // we will send content-length instead.
     let req = http::Request::post("/path")
         .header("content-encoding", "gzip")
         .body("abc")?;

@@ -567,7 +567,7 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://httpbin.org/html")
+    /// let mut resp = Request::get("http://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let mut data = vec![0_u8; 100];
@@ -597,7 +597,7 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://httpbin.org/html")
+    /// let mut resp = Request::get("http://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let data = resp.body_mut().read_to_vec().block().unwrap();
@@ -638,7 +638,7 @@ impl Body {
     /// ```
     /// use hreq::prelude::*;
     ///
-    /// let mut resp = Request::get("https://httpbin.org/html")
+    /// let mut resp = Request::get("http://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
     /// let data = resp.body_mut().read_to_string().block().unwrap();

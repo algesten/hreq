@@ -1,15 +1,11 @@
-use futures_util::io::AsyncReadExt;
-use futures_util::io::BufReader;
-use futures_util::io::Cursor;
-use hreq::prelude::*;
-use hreq::Error;
-
-use async_compression::futures::bufread::GzipDecoder;
-
 mod common;
 
 #[test]
-fn gzip_response() -> Result<(), Error> {
+#[cfg(feature = "gzip")]
+fn gzip_response() -> Result<(), hreq::Error> {
+    use futures_util::io::Cursor;
+    use hreq::prelude::*;
+
     common::setup_logger();
 
     let mut server = Server::new();
@@ -38,7 +34,14 @@ fn gzip_response() -> Result<(), Error> {
 }
 
 #[test]
-fn gzip_response_no_decode() -> Result<(), Error> {
+#[cfg(feature = "gzip")]
+fn gzip_response_no_decode() -> Result<(), hreq::Error> {
+    use async_compression::futures::bufread::GzipDecoder;
+    use futures_util::io::AsyncReadExt;
+    use futures_util::io::BufReader;
+    use futures_util::io::Cursor;
+    use hreq::prelude::*;
+
     common::setup_logger();
 
     let mut server = Server::new();
@@ -71,7 +74,11 @@ fn gzip_response_no_decode() -> Result<(), Error> {
 }
 
 #[test]
-fn gzip_request() -> Result<(), Error> {
+#[cfg(feature = "gzip")]
+fn gzip_request() -> Result<(), hreq::Error> {
+    use hreq::prelude::*;
+    use hreq::Error;
+
     let mut server = Server::new();
 
     server
@@ -94,7 +101,11 @@ fn gzip_request() -> Result<(), Error> {
 }
 
 #[test]
-fn gzip_request_no_encode() -> Result<(), Error> {
+#[cfg(feature = "gzip")]
+fn gzip_request_no_encode() -> Result<(), hreq::Error> {
+    use hreq::prelude::*;
+    use hreq::Error;
+
     let mut server = Server::new();
 
     server

@@ -24,7 +24,7 @@ use conn::ProtocolImpl;
 pub(crate) async fn connect(
     host_port: &HostPort<'_>,
     force_http2: bool,
-    tls_disable_verify: bool,
+    #[allow(unused_variables)] tls_disable_verify: bool,
 ) -> Result<Connection, Error> {
     // "host:port"
     let addr = host_port.to_string();

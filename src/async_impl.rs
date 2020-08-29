@@ -39,58 +39,57 @@ pub(crate) struct TokioRuntime;
 ///   * `TokioOwned`. Uses a preconfigured tokio [`Runtime`] that is
 ///     "handed over" to hreq.
 ///
-///
-/// # Example using `AsyncStd`:
-///
-/// ```
-/// use hreq::AsyncRuntime;
-/// #[cfg(feature = "async-std")]
-/// AsyncRuntime::AsyncStd.make_default();
-/// ```
-///
-/// # Example using a shared tokio.
-///
-/// ```no_run
-/// use hreq::AsyncRuntime;
-///
-/// // assuming the current thread has some tokio runtime, such
-/// // as using the `#[tokio::main]` macro on `fn main() { .. }`
-///
-/// AsyncRuntime::TokioShared.make_default();
-/// ```
-///
-/// # Example using an owned tokio.
-///
-/// ```
-/// use hreq::AsyncRuntime;
-/// // normally: use tokio::runtime::Builder;
-/// use tokio_lib::runtime::Builder;
-///
-/// let runtime = Builder::new()
-///   .enable_io()
-///   .enable_time()
-///   .build()
-///   .expect("Failed to build tokio runtime");
-///
-/// AsyncRuntime::TokioOwned(runtime).make_default();
-/// ```
-///
-///
 /// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
 /// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum AsyncRuntime {
     /// Use `async-std` crate.
+    ///
+    /// # Example using `AsyncStd`:
+    ///
+    /// ```
+    /// use hreq::AsyncRuntime;
+    /// AsyncRuntime::AsyncStd.make_default();
+    /// ```
+    ///
     #[cfg(feature = "async-std")]
     AsyncStd,
     /// Use a tokio `rt-core` single threaded runtime. This is the default.
     #[cfg(feature = "tokio")]
     TokioSingle,
     /// Pick up on a tokio shared runtime.
+    ///
+    ///
+    /// # Example using a shared tokio.
+    ///
+    /// ```no_run
+    /// use hreq::AsyncRuntime;
+    ///
+    /// // assuming the current thread has some tokio runtime, such
+    /// // as using the `#[tokio::main]` macro on `fn main() { .. }`
+    ///
+    /// AsyncRuntime::TokioShared.make_default();
+    /// ```
     #[cfg(feature = "tokio")]
     TokioShared,
     /// Use a tokio runtime owned by hreq.
+    ///
+    /// # Example using an owned tokio.
+    ///
+    /// ```
+    /// use hreq::AsyncRuntime;
+    /// // normally: use tokio::runtime::Builder;
+    /// use tokio_lib::runtime::Builder;
+    ///
+    /// let runtime = Builder::new()
+    ///   .enable_io()
+    ///   .enable_time()
+    ///   .build()
+    ///   .expect("Failed to build tokio runtime");
+    ///
+    /// AsyncRuntime::TokioOwned(runtime).make_default();
+    /// ```
     #[cfg(feature = "tokio")]
     TokioOwned(TokioRuntime),
 }

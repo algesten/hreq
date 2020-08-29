@@ -134,6 +134,7 @@ where
     /// use hreq::prelude::*;
     /// use std::fs::File;
     ///
+    /// #[cfg(feature="tokio")]
     /// let req = Request::post("https://my-euro-server/")
     ///     // This header converts the body to iso8859-1
     ///     .header("content-type", "text/plain; charset=iso8859-1")
@@ -146,6 +147,7 @@ where
     /// use hreq::prelude::*;
     /// use std::fs::File;
     ///
+    /// #[cfg(feature="tokio")]
     /// let req = Request::post("https://my-euro-server/")
     ///     // Disable outgoing charset encoding.
     ///     .charset_encode(false)
@@ -334,6 +336,7 @@ where
     ///
     /// let file = std::fs::File::open("my-big-movie.m4v").unwrap();
     ///
+    /// #[cfg(feature="tokio")]
     /// Request::post("https://my-redirect-server/")
     ///     .redirect_body_buffer(1024 * 1024) // up to 1mb buffer for resend
     ///     .header("expect", "100-continue")  // delay for 100-continue or redirect
@@ -366,6 +369,7 @@ where
     ///
     /// However it might be appropriate to use in some localhost developer scenarios,
     /// unit tests, etc.
+    #[cfg(feature = "tls")]
     fn tls_disable_server_cert_verify(self, disable: bool) -> Self;
 
     /// Finish building the request by providing something as [`Body`].
@@ -585,6 +589,7 @@ impl RequestBuilderExt for request::Builder {
         })
     }
 
+    #[cfg(feature = "tls")]
     fn tls_disable_server_cert_verify(self, disable: bool) -> Self {
         with_hreq_params(self, |params| {
             params.tls_disable_verify = disable;

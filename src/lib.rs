@@ -288,7 +288,7 @@
 //!
 //! See the [`server module doc`] for more details.
 //!
-//! ```no_run
+//! ```ignore
 //! use hreq::prelude::*;
 //!
 //! fn main() {

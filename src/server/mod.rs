@@ -129,7 +129,7 @@ mod router;
 mod serv_handle;
 mod serv_req_ext;
 
-#[cfg(feature="tls")]
+#[cfg(feature = "tls")]
 mod tls_config;
 
 use conn::Connection;
@@ -146,7 +146,7 @@ pub use router::Router;
 pub use serv_handle::ServerHandle;
 pub use serv_req_ext::ServerRequestExt;
 
-#[cfg(feature="tls")]
+#[cfg(feature = "tls")]
 pub use tls_config::TlsConfig;
 
 /// Server of http requests.
@@ -428,7 +428,6 @@ where
         Ok(http::Response::from_parts(parts, body))
     }
 }
-
 
 /// Connects TLS, routes requests and responses.
 struct Driver<State> {

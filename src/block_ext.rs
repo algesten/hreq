@@ -43,7 +43,7 @@ use std::future::Future;
 /// use hreq::prelude::*;
 ///
 /// let body_str = async {
-///     let res = Request::get("https://httpbin.org/html")
+///     let res = Request::get("http://httpbin.org/html")
 ///         .call().await?;
 ///
 ///     let mut body = res.into_body();

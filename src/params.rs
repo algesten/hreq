@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug)]
+#[allow(unused_variables)]
 pub(crate) struct HReqParams {
     pub local_addr: SocketAddr,
     pub remote_addr: SocketAddr,
