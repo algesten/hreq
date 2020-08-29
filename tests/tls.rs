@@ -1,11 +1,10 @@
-use hreq::prelude::*;
-use hreq::Error;
-use rustls::internal::pemfile;
-
 mod common;
 
 #[test]
-fn tls_client_to_server() -> Result<(), Error> {
+#[cfg(feature = "tls")]
+fn tls_client_to_server() -> Result<(), hreq::Error> {
+    use hreq::prelude::*;
+
     common::setup_logger();
 
     let mut server = Server::new();
@@ -13,20 +12,11 @@ fn tls_client_to_server() -> Result<(), Error> {
         .at("/path")
         .all(|_: http::Request<Body>| async move { "ok" });
 
-    let mut tls = rustls::ServerConfig::new(rustls::NoClientAuth::new());
+    let config = hreq::server::TlsConfig::new()
+        .key_path("tests/tls_cert.pem")
+        .cert_path("tests/tls_cert.pem");
 
-    const CERT_PEM: &[u8] = include_bytes!("./tls_cert.pem");
-
-    let mut cur = std::io::Cursor::new(CERT_PEM);
-
-    let certs = pemfile::certs(&mut cur).expect("Read TLS cert");
-    cur.set_position(0);
-    let mut keys = pemfile::pkcs8_private_keys(&mut cur).expect("Read TLS key");
-    let key = keys.pop().unwrap();
-
-    tls.set_single_cert(certs, key).expect("Set TLS keys");
-
-    let (handle, addr) = server.listen_tls(0, tls).block()?;
+    let (handle, addr) = server.listen_tls(0, config).block()?;
 
     hreq::AsyncRuntime::spawn(async move {
         handle.keep_alive().await;

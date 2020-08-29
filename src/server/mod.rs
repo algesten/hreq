@@ -129,6 +129,9 @@ mod router;
 mod serv_handle;
 mod serv_req_ext;
 
+#[cfg(feature="tls")]
+mod tls_config;
+
 use conn::Connection;
 use peek::Peekable;
 use serv_handle::EndFut;
@@ -142,6 +145,9 @@ pub use route::{Route, StateRoute};
 pub use router::Router;
 pub use serv_handle::ServerHandle;
 pub use serv_req_ext::ServerRequestExt;
+
+#[cfg(feature="tls")]
+pub use tls_config::TlsConfig;
 
 /// Server of http requests.
 ///
@@ -221,6 +227,23 @@ where
     /// be dispatched to either.
     #[cfg(feature = "tls")]
     pub async fn listen_tls(
+        &self,
+        port: u16,
+        config: TlsConfig,
+    ) -> Result<(ServerHandle, SocketAddr), Error> {
+        let rustls_config = config.into_rustls_config()?;
+        Ok(self.listen_tls_rustls(port, rustls_config).await?)
+    }
+
+    /// Bind and listen to the port with TLS using a specific Rustls config.
+    ///
+    /// The address bound will be `0.0.0.0:<port>`. Use port `0` to get a random port.
+    ///
+    /// The internal router is cloned on this call. That means all routes must be added
+    /// already. Routes added after this call will not cause an error, but will not
+    /// be dispatched to either.
+    #[cfg(feature = "rustls")]
+    pub async fn listen_tls_rustls(
         &self,
         port: u16,
         tls: rustls::ServerConfig,
@@ -405,6 +428,7 @@ where
         Ok(http::Response::from_parts(parts, body))
     }
 }
+
 
 /// Connects TLS, routes requests and responses.
 struct Driver<State> {
