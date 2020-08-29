@@ -1,6 +1,6 @@
 [package]
 name = "hreq"
-version = "0.5.4"
+version = "0.5.5"
 authors = ["Martin Algesten <martin@lookback.io>"]
 description = "hreq is a user first async http client"
 license = "MIT/Apache-2.0"
