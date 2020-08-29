@@ -1,8 +1,12 @@
 use hreq::prelude::*;
 use hreq::Error;
 
+mod common;
+
 #[test]
 fn code_302() -> Result<(), Error> {
+    common::setup_logger();
+
     let mut server = Server::new();
 
     server
