@@ -23,7 +23,6 @@ use webpki_roots::TLS_SERVER_ROOTS;
 /// the negotiation is returned with the wrapped stream.
 ///
 /// [`protocol`]: ../proto/enum.Protocol.html
-#[instrument(skip(stream, domain))]
 pub(crate) async fn wrap_tls_client(
     stream: impl Stream,
     domain: &str,
@@ -84,7 +83,6 @@ pub(crate) fn configure_tls_server(config: &mut ServerConfig) {
 }
 
 #[cfg(feature = "server")]
-#[instrument(skip(stream, config))]
 pub(crate) async fn wrap_tls_server(
     stream: impl Stream,
     config: Arc<ServerConfig>,

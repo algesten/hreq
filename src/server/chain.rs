@@ -9,7 +9,6 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tracing_futures::Instrument;
 
 /// Endpoint, handler or a router.
 #[derive(Clone)]
@@ -35,7 +34,6 @@ where
                 End::Router(r) => r.run(state, req).await,
             }
         }
-        .instrument(trace_span!("endpoint_run"))
     }
 }
 
@@ -61,7 +59,6 @@ where
                 Mid::StateMiddleware(m) => m.call((*state).clone(), req, next).await,
             }
         }
-        .instrument(trace_span!("middleware_run"))
     }
 }
 
@@ -106,11 +103,9 @@ where
         let chain = self.next.clone();
         let state2 = state.clone();
         let next = Next(Box::new(|req: Request<Body>| {
-            Box::pin(
-                async move { chain.run(state2, req).await }.instrument(trace_span!("next_run")),
-            )
+            Box::pin(async move { chain.run(state2, req).await })
         }));
-        async move { self.mid.run(state, req, next).await }.instrument(trace_span!("midwrap_run"))
+        async move { self.mid.run(state, req, next).await }
     }
 }
 
@@ -130,15 +125,12 @@ where
         state: Arc<State>,
         req: Request<Body>,
     ) -> Pin<Box<dyn Future<Output = Reply> + Send + 'a>> {
-        Box::pin(
-            async move {
-                match self {
-                    Chain::MidWrap(c) => c.run(state, req).await.into(),
-                    Chain::End(e) => e.run(state, req).await,
-                }
+        Box::pin(async move {
+            match self {
+                Chain::MidWrap(c) => c.run(state, req).await.into(),
+                Chain::End(e) => e.run(state, req).await,
             }
-            .instrument(trace_span!("chain_run")),
-        )
+        })
     }
 }
 

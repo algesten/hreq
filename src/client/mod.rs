@@ -2,7 +2,6 @@ use crate::AsyncRuntime;
 use crate::Error;
 use crate::Stream;
 use hreq_h1 as h1;
-use tracing_futures::Instrument;
 
 mod agent;
 mod conn;
@@ -75,8 +74,7 @@ pub(crate) async fn open_stream(
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);
             }
-        }
-        .instrument(trace_span!("conn_task"));
+        };
         AsyncRuntime::spawn(conn_task);
         Ok(Connection::new(host_port, ProtocolImpl::Http2(h2)))
     } else {
@@ -87,8 +85,7 @@ pub(crate) async fn open_stream(
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);
             }
-        }
-        .instrument(trace_span!("conn_task"));
+        };
         AsyncRuntime::spawn(conn_task);
         Ok(Connection::new(host_port, ProtocolImpl::Http1(h1)))
     }

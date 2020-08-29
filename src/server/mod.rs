@@ -115,7 +115,6 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing_futures::Instrument;
 
 mod chain;
 mod conn;
@@ -229,7 +228,6 @@ where
         Ok(self.do_listen(port, Some(tls)).await?)
     }
 
-    #[instrument(name = "server_listen", skip(self, port, tls))]
     async fn do_listen(
         &self,
         port: u16,
@@ -274,10 +272,6 @@ where
 
                         trace!("Connection from: {}", remote_addr);
 
-                        let span =
-                            trace_span!("conn_task", remote_addr = &remote_addr.to_string()[..]);
-                        span.follows_from(tracing::span::Span::current());
-
                         // Local clone for this connection.
                         let driver = driver.clone();
 
@@ -302,8 +296,7 @@ where
                                     debug!("Client connection failed: {}", e);
                                 }
                             }
-                        }
-                        .instrument(span);
+                        };
 
                         // each socket is handled in another spawn to listen for more sockets.
                         AsyncRuntime::spawn(conn_task);
@@ -318,8 +311,7 @@ where
 
             #[allow(unreachable_code)] // for type checker
             Some(())
-        }
-        .instrument(trace_span!("listen_task"));
+        };
 
         AsyncRuntime::spawn(task);
 
@@ -329,7 +321,6 @@ where
     /// Manually dispatch a request to this server.
     ///
     /// This is mainly useful for building tests without binding a port.
-    #[instrument(skip(self, req))]
     pub async fn handle<B: Into<Body>>(
         &self,
         req: http::Request<B>,
@@ -513,8 +504,6 @@ where
 
         debug!("Handshake done, waiting for requests: {}", remote_addr);
 
-        let mut req_no = 0;
-
         loop {
             // Process each incoming request in turn.
             let inc = self.end.race(conn.accept(local_addr, remote_addr)).await;
@@ -528,8 +517,6 @@ where
                 // either shutdown or no more requests from conn
                 return Ok(());
             };
-
-            req_no += 1;
 
             // Cloning the driver is cheap for the inner spawn.
             let driver = self.clone();
@@ -560,8 +547,7 @@ where
                     // disconnected or similar.
                     debug!("Error sending response: {}", err);
                 }
-            }
-            .instrument(debug_span!("req_task", no = req_no));
+            };
 
             AsyncRuntime::spawn(req_task);
         }

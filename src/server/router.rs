@@ -8,7 +8,6 @@ use http::Response;
 use std::fmt;
 use std::future::Future;
 use std::sync::Arc;
-use tracing_futures::Instrument;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RouteMethod {
@@ -140,7 +139,6 @@ where
             trace!("No endpoint");
             Response::builder().status(404).body("Not found").into()
         }
-        .instrument(trace_span!("router_run"))
     }
 }
 

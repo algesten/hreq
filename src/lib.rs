@@ -341,7 +341,7 @@
 //! [serde]: https://crates.io/crates/serde
 //! [`server module doc`]: server/index.html
 #[macro_use]
-extern crate tracing;
+extern crate log;
 
 mod async_impl;
 mod block_ext;
