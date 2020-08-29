@@ -10,7 +10,7 @@ jobs:
       matrix:
         runtime:
           - tokio
-          - async-std
+          # - async-std
         server:
           - ""
           - "server"
