@@ -1,13 +1,33 @@
-name: Rust
+on: [push, pull_request]
 
-on: [push]
+name: CI
 
 jobs:
   build:
-
+    name: hreq
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        feature:
+          - ''
+          - gzip
+          - tls
+    env:
+      RUST_BACKTRACE: "1"
     steps:
-    - uses: actions/checkout@v2
-    - name: Run tests
-      run: TEST_LOG=1 cargo test --features server
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Test tokio
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features "tokio server ${{ matrix.feature }}"
+      - name: Test async-std
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features "async-std server ${{ matrix.feature }}"
