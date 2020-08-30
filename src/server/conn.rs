@@ -200,25 +200,43 @@ impl SendResponse {
 }
 
 pub(crate) fn configure_response(parts: &mut http::response::Parts, body: &Body, is_http2: bool) {
-    if let Some(len) = body.content_encoded_length() {
-        // the body indicates a length (for sure).
-        let user_set_length = parts.headers.get("content-length").is_some();
+    let is304 = parts.status == 304;
 
-        if !user_set_length && (len > 0 || !parts.status.is_redirection()) {
-            parts.headers.set("content-length", len.to_string());
+    // https://tools.ietf.org/html/rfc7232#section-4.1
+    //
+    // Since the goal of a 304 response is to minimize information transfer
+    // when the recipient already has one or more cached representations, a
+    // sender SHOULD NOT generate representation metadata other than the
+    // above listed fields unless said metadata exists for the purpose of
+    // guiding cache updates (e.g., Last-Modified might be useful if the
+    // response does not have an ETag field).
+    if !is304 {
+        if let Some(len) = body.content_encoded_length() {
+            // the body indicates a length (for sure).
+            let user_set_length = parts.headers.get("content-length").is_some();
+
+            if !user_set_length && (len > 0 || !parts.status.is_redirection()) {
+                parts.headers.set("content-length", len.to_string());
+            }
+        } else if !is_http2 && !parts.status.is_redirection() {
+            // body does not indicate a length (like from a reader),
+            // and status indicates there really is one.
+            // we chose chunked.
+            if parts.headers.get("transfer-encoding").is_none() {
+                parts.headers.set("transfer-encoding", "chunked");
+            }
         }
-    } else if !is_http2 && !parts.status.is_redirection() {
-        // body does not indicate a length (like from a reader),
-        // and status indicates there really is one.
-        // we chose chunked.
-        if parts.headers.get("transfer-encoding").is_none() {
-            parts.headers.set("transfer-encoding", "chunked");
+
+        if parts.headers.get("content-type").is_none() {
+            if let Some(ctype) = body.content_type() {
+                parts.headers.set("content-type", ctype);
+            }
         }
     }
 
-    if parts.headers.get("content-type").is_none() {
-        if let Some(ctype) = body.content_type() {
-            parts.headers.set("content-type", ctype);
+    if let Some(time) = body.last_modified() {
+        if parts.headers.get("last-modified").is_none() {
+            parts.headers.set("last-modified", fmt_http_date(time));
         }
     }
 

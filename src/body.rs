@@ -23,6 +23,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::SystemTime;
 
 #[cfg(feature = "gzip")]
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
@@ -169,6 +170,7 @@ pub struct Body {
     codec: BufReader<BodyCodec>,
     length: Option<u64>, // incoming length if given with reader
     content_typ: Option<String>,
+    last_modified: Option<SystemTime>,
     override_source_enc: Option<&'static Encoding>,
     has_read: bool,
     char_codec: Option<CharCodec>,
@@ -356,10 +358,10 @@ impl Body {
         Body::from_async_read(reader, length).ctype(CT_BIN)
     }
 
-    // pub(crate) async fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
-    //     let body = path_to_body(path.as_ref()).await?;
-    //     Ok(body)
-    // }
+    pub(crate) async fn from_path_io(path: impl AsRef<Path>) -> Result<Self, io::Error> {
+        let body = path_to_body(path.as_ref()).await?;
+        Ok(body)
+    }
 
     /// Creates a body from a JSON encodable type.
     ///
@@ -433,6 +435,7 @@ impl Body {
             codec,
             length,
             content_typ: None,
+            last_modified: None,
             override_source_enc: None,
             has_read: false,
             char_codec: None,
@@ -474,6 +477,12 @@ impl Body {
     /// The content type set by the body, if any.
     pub(crate) fn content_type(&self) -> Option<&str> {
         self.content_typ.as_ref().map(|s| &s[..])
+    }
+
+    /// Last modified set when reading files. Used server side.
+    #[allow(unused)]
+    pub(crate) fn last_modified(&self) -> Option<SystemTime> {
+        self.last_modified
     }
 
     pub(crate) fn is_configurable(&self) -> bool {
@@ -1038,16 +1047,19 @@ impl fmt::Debug for Body {
     }
 }
 
-pub(crate) async fn path_to_body(absolute: &Path) -> Result<Body, io::Error> {
+async fn path_to_body(absolute: &Path) -> Result<Body, io::Error> {
     let file = std::fs::File::open(&absolute)?;
 
-    let length = file.metadata()?.len();
+    let meta = file.metadata()?;
+
+    let length = meta.len();
+    let modified = meta.modified()?;
 
     let guess = mime_guess::from_path(&absolute);
     let mut content_type = if let Some(mime) = guess.first() {
         mime.to_string()
     } else {
-        "application/octet-stream".to_string()
+        CT_BIN.to_string()
     };
 
     let read = AsyncRuntime::file_to_reader(file);
@@ -1073,6 +1085,7 @@ pub(crate) async fn path_to_body(absolute: &Path) -> Result<Body, io::Error> {
 
     let mut body = Body::from_async_read(peek, Some(length));
     body.content_typ = Some(content_type);
+    body.last_modified = Some(modified);
 
     Ok(body)
 }

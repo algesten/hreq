@@ -130,8 +130,8 @@ where
                     continue;
                 }
                 let m = ep.path.path_match(&path);
-                trace!("Found endpoint: {:?}", ep);
                 if let Some(m) = m {
+                    trace!("Use endpoint: {:?}", ep);
                     req.extensions_mut().insert(m);
                     return ep.chain.run(state, req).await;
                 }

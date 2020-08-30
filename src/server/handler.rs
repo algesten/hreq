@@ -1,10 +1,12 @@
 use super::Reply;
-use crate::body::path_to_body;
+use crate::head_ext::HeaderMapExt;
 use crate::Body;
 use http::Request;
+use httpdate::{fmt_http_date, parse_http_date};
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
+use std::time::SystemTime;
 
 /// Trait for a request handler that doesn't use a state.
 ///
@@ -164,17 +166,25 @@ fn err(status: u16, msg: &str) -> http::Response<Body> {
 }
 
 impl DirHandler {
-    async fn handle(&self, to_serve: String) -> Result<http::Response<Body>, Error> {
+    async fn handle(
+        &self,
+        to_serve: String,
+        if_modified_since: Option<SystemTime>,
+    ) -> Result<http::Response<Body>, Error> {
         // Use the segment from the /*name appended to the dir we use.
         // This could be relative such as `"/path/to/serve"` + `"blah/../foo.txt"`
         let mut relative = self.0.clone();
         relative.push(&to_serve);
 
         // By canonicalizing we remove any `..`.
-        let absolute = match relative.canonicalize() {
+        let mut absolute = match relative.canonicalize() {
             Err(e) => {
-                debug!("Failed to canonicalize ({}): {:?}", to_serve, e);
-                return Ok(err(400, "Bad path"));
+                if e.kind() == io::ErrorKind::NotFound {
+                    return Ok(err(404, "Not found"));
+                } else {
+                    warn!("Failed to canonicalize ({}): {:?}", to_serve, e);
+                    return Ok(err(400, "Bad request"));
+                }
             }
             Ok(v) => v,
         };
@@ -183,10 +193,39 @@ impl DirHandler {
         // "/path/to/serve" + "../../../etc/passwd". It works because self.0 is canonicalized.
         if !absolute.starts_with(&self.0) {
             debug!("Path not under base path: {}", to_serve);
-            return Ok(err(400, "Bad path"));
+            return Ok(err(404, "Bad path"));
         }
 
-        let body = match path_to_body(&absolute).await {
+        // TODO configurable index files.
+        if absolute.is_dir() {
+            absolute.push("index.html");
+        }
+
+        if let Some(since) = if_modified_since {
+            if let Ok(modified) = absolute.metadata().and_then(|v| v.modified()) {
+                // for files that updated, since will be earlier than modified.
+                if let Ok(diff) = modified.duration_since(since) {
+                    // The web format has a resultion of seconds: Fri, 15 May 2015 15:34:21 GMT
+                    // So the diff must be less than a second.
+                    if diff.as_secs_f32() < 1.0 {
+                        return Ok(http::Response::builder()
+                            .status(304)
+                            // https://tools.ietf.org/html/rfc7232#section-4.1
+                            //
+                            // The server generating a 304 response MUST generate any of the
+                            // following header fields that would have been sent in a 200 (OK)
+                            // response to the same request: Cache-Control, Content-Location, Date,
+                            // ETag, Expires, and Vary.
+                            .header("cache-control", "must-revalidate")
+                            .header("last-modified", fmt_http_date(modified))
+                            .body(().into())
+                            .unwrap());
+                    }
+                }
+            }
+        }
+
+        let body = match Body::from_path_io(&absolute).await {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Ok(err(404, "Not found"));
@@ -198,7 +237,10 @@ impl DirHandler {
             Ok(v) => v,
         };
 
-        Ok(http::Response::builder().body(body).unwrap())
+        Ok(http::Response::builder()
+            .header("cache-control", "must-revalidate")
+            .body(body)
+            .unwrap())
     }
 }
 
@@ -220,9 +262,13 @@ impl Handler for DirHandler {
             Box::pin(async move { err(500, msg).into() })
         } else {
             let to_serve = params[0].1.to_owned();
+            let if_modified_since = req
+                .headers()
+                .get_as::<String>("if-modified-since")
+                .and_then(|v| parse_http_date(&v).ok());
 
             Box::pin(async move {
-                let ret = self.handle(to_serve).await;
+                let ret = self.handle(to_serve, if_modified_since).await;
                 ret.into()
             })
         }
