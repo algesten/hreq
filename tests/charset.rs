@@ -219,7 +219,7 @@ fn iso8859_server() -> Server<()> {
 
     let mut server = Server::new();
     server.at("/path").all(|_: http::Request<Body>| async move {
-        let file = File::open("./data/iso8859.txt").unwrap();
+        let file = File::open("tests/data/iso8859.txt").unwrap();
         let buf_reader = BufReader::new(file);
         http::Response::builder()
             .charset_encode_source("iso8859-1")
@@ -236,7 +236,7 @@ fn shiftjis_server() -> Server<()> {
 
     let mut server = Server::new();
     server.at("/path").all(|_: http::Request<Body>| async move {
-        let file = File::open("./data/shiftjis.txt").unwrap();
+        let file = File::open("tests/data/shiftjis.txt").unwrap();
         let buf_reader = BufReader::new(file);
         http::Response::builder()
             .charset_encode_source("Shift_JIS")

@@ -13,8 +13,8 @@ fn tls_client_to_server() -> Result<(), hreq::Error> {
         .all(|_: http::Request<Body>| async move { "ok" });
 
     let config = hreq::server::TlsConfig::new()
-        .key_path("tests/tls_cert.pem")
-        .cert_path("tests/tls_cert.pem");
+        .key_path("tests/data/tls_cert.pem")
+        .cert_path("tests/data/tls_cert.pem");
 
     let (handle, addr) = server.listen_tls(0, config).block()?;
 
