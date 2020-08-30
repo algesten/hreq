@@ -13,7 +13,7 @@ pub(crate) enum Either<A, B> {
     B(B),
 }
 
-impl<A: Stream, B: Stream> AsyncRead for Either<A, B> {
+impl<A: AsyncRead + Unpin, B: AsyncRead + Unpin> AsyncRead for Either<A, B> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -26,7 +26,7 @@ impl<A: Stream, B: Stream> AsyncRead for Either<A, B> {
     }
 }
 
-impl<A: Stream, B: Stream> AsyncWrite for Either<A, B> {
+impl<A: AsyncWrite + Unpin, B: AsyncWrite + Unpin> AsyncWrite for Either<A, B> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

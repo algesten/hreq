@@ -242,6 +242,14 @@ impl AsyncRuntime {
             TokioSingle | TokioShared | TokioOwned => async_tokio::listen(addr).await,
         }
     }
+
+    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncRead {
+        use Inner::*;
+        match current() {
+            AsyncStd => Either::A(async_std::file_to_reader(file)),
+            TokioSingle | TokioShared | TokioOwned => Either::B(async_tokio::file_to_reader(file)),
+        }
+    }
 }
 
 #[cfg(not(feature = "async-std"))]
@@ -266,6 +274,10 @@ mod async_std {
     #[cfg(feature = "server")]
     pub(crate) async fn listen(_: SocketAddr) -> Result<Listener, Error> {
         unreachable!();
+    }
+
+    pub(crate) fn file_to_reader(_: std::fs::File) -> impl AsyncRead {
+        FakeStream
     }
 }
 
@@ -305,6 +317,11 @@ pub(crate) mod async_std {
         let listener = TcpListener::bind(addr).await?;
         Ok(Listener::AsyncStd(listener))
     }
+
+    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncRead {
+        let file: async_std_lib::fs::File = file.into();
+        file
+    }
 }
 
 #[cfg(not(feature = "tokio"))]
@@ -339,6 +356,10 @@ pub(crate) mod async_tokio {
     #[cfg(feature = "server")]
     pub(crate) async fn listen(_: SocketAddr) -> Result<Listener, Error> {
         unreachable!();
+    }
+
+    pub(crate) fn file_to_reader(_: std::fs::File) -> impl AsyncRead {
+        FakeStream
     }
 }
 
@@ -438,6 +459,11 @@ pub(crate) mod async_tokio {
         use tokio_lib::net::TcpListener;
         let listener = TcpListener::bind(addr).await?;
         Ok(Listener::Tokio(listener))
+    }
+
+    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncRead {
+        let file = tokio_lib::fs::File::from_std(file);
+        from_tokio(file)
     }
 }
 

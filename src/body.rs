@@ -4,6 +4,7 @@ use crate::charset::CharCodec;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
 use crate::AsyncRead;
+use crate::AsyncRuntime;
 use crate::Error;
 use bytes::Bytes;
 use encoding_rs::Encoding;
@@ -324,7 +325,8 @@ impl Body {
     /// the file in a non-blocking way.
     ///
     /// The request will have a `content-length` header unless compression or
-    /// chunked encoding is used.
+    /// chunked encoding is used. Uses `content-type` from the headers if set , and
+    /// falls back to `application/octet-stream`.
     ///
     /// # Examples
     ///
@@ -346,11 +348,10 @@ impl Body {
     /// Request::post("https://post-to-here")
     ///     .send(File::open("myfile.txt").unwrap()).block().unwrap();
     /// ```
-    #[cfg(feature = "tokio")]
     pub fn from_file(file: std::fs::File) -> Self {
-        let len = file.metadata().ok().map(|m| m.len());
-        let async_file = tokio_lib::fs::File::from_std(file);
-        Body::from_async_read(crate::tokio::from_tokio(async_file), len).ctype(CT_BIN)
+        let length = file.metadata().ok().map(|m| m.len());
+        let reader = AsyncRuntime::file_to_reader(file);
+        Body::from_async_read(reader, length).ctype(CT_BIN)
     }
 
     /// Creates a body from a JSON encodable type.
@@ -923,7 +924,6 @@ impl<'a> From<&'a Vec<u8>> for Body {
     }
 }
 
-#[cfg(feature = "tokio")]
 impl From<std::fs::File> for Body {
     fn from(file: std::fs::File) -> Self {
         Body::from_file(file)

@@ -11,14 +11,16 @@ pub(crate) struct Peekable<S> {
     buf: Vec<u8>,
 }
 
-impl<S: Stream> Peekable<S> {
+impl<S> Peekable<S> {
     pub fn new(stream: S, capacity: usize) -> Self {
         Peekable {
             stream,
             buf: Vec::with_capacity(capacity),
         }
     }
+}
 
+impl<S: AsyncRead + Unpin> Peekable<S> {
     pub async fn peek(&mut self, len: usize) -> Result<&[u8], io::Error> {
         let cur = self.buf.len();
         if cur >= len {
@@ -30,7 +32,7 @@ impl<S: Stream> Peekable<S> {
     }
 }
 
-impl<S: Stream> AsyncRead for Peekable<S> {
+impl<S: AsyncRead + Unpin> AsyncRead for Peekable<S> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -52,7 +54,7 @@ impl<S: Stream> AsyncRead for Peekable<S> {
     }
 }
 
-impl<S: Stream> AsyncWrite for Peekable<S> {
+impl<S: AsyncWrite + Unpin> AsyncWrite for Peekable<S> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
