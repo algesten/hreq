@@ -106,6 +106,7 @@
 
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;
+use crate::peek::Peekable;
 use crate::proto::Protocol;
 use crate::AsyncRuntime;
 use crate::Body;
@@ -121,7 +122,6 @@ mod conn;
 mod handler;
 mod middle;
 mod path;
-mod peek;
 mod reply;
 mod resb_ext;
 mod route;
@@ -133,11 +133,10 @@ mod serv_req_ext;
 mod tls_config;
 
 use conn::Connection;
-use peek::Peekable;
 use serv_handle::EndFut;
 
 pub use chain::Next;
-pub use handler::{Handler, StateHandler};
+pub use handler::{serve_dir, Handler, StateHandler};
 pub use middle::{Middleware, StateMiddleware};
 pub use reply::Reply;
 pub use resb_ext::ResponseBuilderExt;

@@ -354,6 +354,7 @@ mod either;
 mod error;
 mod head_ext;
 mod params;
+mod peek;
 mod proto;
 mod psl;
 mod res_ext;

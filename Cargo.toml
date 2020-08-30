@@ -63,6 +63,8 @@ qstring = "0.7"
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
 log = "0.4"
+mime_guess = "2"
+chardetng = "0.1"
 
 # keep in sync with time brought in by cookie
 time = "=0.2.16"

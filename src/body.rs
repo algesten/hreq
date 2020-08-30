@@ -3,6 +3,7 @@
 use crate::charset::CharCodec;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
+use crate::peek::Peekable;
 use crate::AsyncRead;
 use crate::AsyncRuntime;
 use crate::Error;
@@ -18,6 +19,7 @@ use serde::Serialize;
 use std::fmt;
 use std::future::Future;
 use std::io;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -166,7 +168,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 pub struct Body {
     codec: BufReader<BodyCodec>,
     length: Option<u64>, // incoming length if given with reader
-    content_typ: Option<&'static str>,
+    content_typ: Option<String>,
     override_source_enc: Option<&'static Encoding>,
     has_read: bool,
     char_codec: Option<CharCodec>,
@@ -354,6 +356,11 @@ impl Body {
         Body::from_async_read(reader, length).ctype(CT_BIN)
     }
 
+    // pub(crate) async fn from_path(path: impl AsRef<Path>) -> Result<Self, Error> {
+    //     let body = path_to_body(path.as_ref()).await?;
+    //     Ok(body)
+    // }
+
     /// Creates a body from a JSON encodable type.
     ///
     /// This also sets the `content-type` and `content-length` headers.
@@ -435,7 +442,7 @@ impl Body {
     }
 
     fn ctype(mut self, c: &'static str) -> Self {
-        self.content_typ = Some(c);
+        self.content_typ = Some(c.to_string());
         self
     }
 
@@ -466,7 +473,7 @@ impl Body {
 
     /// The content type set by the body, if any.
     pub(crate) fn content_type(&self) -> Option<&str> {
-        self.content_typ
+        self.content_typ.as_ref().map(|s| &s[..])
     }
 
     pub(crate) fn is_configurable(&self) -> bool {
@@ -1029,4 +1036,43 @@ impl fmt::Debug for Body {
         }?;
         write!(f, " }}")
     }
+}
+
+pub(crate) async fn path_to_body(absolute: &Path) -> Result<Body, io::Error> {
+    let file = std::fs::File::open(&absolute)?;
+
+    let length = file.metadata()?.len();
+
+    let guess = mime_guess::from_path(&absolute);
+    let mut content_type = if let Some(mime) = guess.first() {
+        mime.to_string()
+    } else {
+        "application/octet-stream".to_string()
+    };
+
+    let read = AsyncRuntime::file_to_reader(file);
+
+    const PEEK_LEN: usize = 1024;
+
+    let mut peek = Peekable::new(read, PEEK_LEN);
+
+    // For text files, we try to guess the character encoding.
+    if content_type.starts_with("text/") {
+        // attempt to guess charset
+        let max = (PEEK_LEN as u64).min(length);
+
+        let buf = peek.peek(max as usize).await?;
+
+        let mut det = chardetng::EncodingDetector::new();
+        det.feed(buf, length < PEEK_LEN as u64);
+
+        let enc = det.guess(None, true);
+
+        content_type.push_str(&format!("; charset={}", enc.name()));
+    }
+
+    let mut body = Body::from_async_read(peek, Some(length));
+    body.content_typ = Some(content_type);
+
+    Ok(body)
 }
