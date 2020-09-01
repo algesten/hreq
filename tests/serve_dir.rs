@@ -217,3 +217,36 @@ fn server_serve_dir_last_modified() -> Result<(), hreq::Error> {
 
     Ok(())
 }
+
+#[test]
+fn server_serve_dir_head() -> Result<(), hreq::Error> {
+    common::setup_logger();
+
+    let mut server = Server::new();
+    server
+        .at("/my/special/*path")
+        .all(hreq::server::serve_dir("tests/data"));
+
+    let (handle, addr) = server.listen(0).block()?;
+
+    hreq::AsyncRuntime::spawn(async move {
+        handle.keep_alive().await;
+    });
+
+    let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
+    let res = http::Request::head(uri).call().block()?;
+
+    assert_eq!(res.status(), 200);
+    assert_eq!(
+        res.header("content-type"),
+        Some("text/plain; charset=windows-1252")
+    );
+
+    let len: u64 = res.header_as("content-length").unwrap();
+    assert!(len > 0);
+
+    let s = res.into_body().read_to_string().block()?;
+    assert!(s.is_empty());
+
+    Ok(())
+}

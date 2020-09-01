@@ -170,6 +170,7 @@ impl DirHandler {
         &self,
         to_serve: String,
         if_modified_since: Option<SystemTime>,
+        is_head: bool,
     ) -> Result<http::Response<Body>, Error> {
         // Use the segment from the /*name appended to the dir we use.
         // This could be relative such as `"/path/to/serve"` + `"blah/../foo.txt"`
@@ -225,7 +226,7 @@ impl DirHandler {
             }
         }
 
-        let body = match Body::from_path_io(&absolute).await {
+        let body = match Body::from_path_io(&absolute, is_head).await {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Ok(err(404, "Not found"));
@@ -266,9 +267,10 @@ impl Handler for DirHandler {
                 .headers()
                 .get_as::<String>("if-modified-since")
                 .and_then(|v| parse_http_date(&v).ok());
+            let is_head = req.method() == http::Method::HEAD;
 
             Box::pin(async move {
-                let ret = self.handle(to_serve, if_modified_since).await;
+                let ret = self.handle(to_serve, if_modified_since, is_head).await;
                 ret.into()
             })
         }

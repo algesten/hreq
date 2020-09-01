@@ -358,8 +358,11 @@ impl Body {
         Body::from_async_read(reader, length).ctype(CT_BIN)
     }
 
-    pub(crate) async fn from_path_io(path: impl AsRef<Path>) -> Result<Self, io::Error> {
-        let body = path_to_body(path.as_ref()).await?;
+    pub(crate) async fn from_path_io(
+        path: impl AsRef<Path>,
+        is_head: bool,
+    ) -> Result<Self, io::Error> {
+        let body = path_to_body(path.as_ref(), is_head).await?;
         Ok(body)
     }
 
@@ -1047,7 +1050,7 @@ impl fmt::Debug for Body {
     }
 }
 
-async fn path_to_body(absolute: &Path) -> Result<Body, io::Error> {
+async fn path_to_body(absolute: &Path, is_head: bool) -> Result<Body, io::Error> {
     let file = std::fs::File::open(&absolute)?;
 
     let meta = file.metadata()?;
@@ -1083,7 +1086,13 @@ async fn path_to_body(absolute: &Path) -> Result<Body, io::Error> {
         content_type.push_str(&format!("; charset={}", enc.name()));
     }
 
-    let mut body = Body::from_async_read(peek, Some(length));
+    let mut body = if is_head {
+        Body::empty()
+    } else {
+        Body::from_async_read(peek, None)
+    };
+
+    body.length = Some(length);
     body.content_typ = Some(content_type);
     body.last_modified = Some(modified);
 
