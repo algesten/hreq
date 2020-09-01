@@ -565,9 +565,14 @@ where
 
                 // Send the response
                 if let Err(err) = send.send_response(result, params).await {
-                    // Error encountered while sending a response back, maybe peer
-                    // disconnected or similar.
-                    debug!("Error sending response: {}", err);
+                    if err.is_io() {
+                        // Error encountered while sending a response back, maybe peer
+                        // disconnected or similar.
+                        debug!("Error sending response: {}", err);
+                    } else {
+                        // Error, like sending a body on a HEAD request.
+                        error!("{}", err);
+                    }
                 }
             };
 
