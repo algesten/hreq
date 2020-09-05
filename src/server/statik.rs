@@ -222,7 +222,6 @@ impl Dispatch {
         let read = AsyncRuntime::file_to_reader(file);
         const PEEK_LEN: usize = 1024;
         let mut peek = Peekable::new(read, PEEK_LEN);
-        let mut charset_encode = true;
 
         // For text files, we try to guess the character encoding.
         if content_type.starts_with("text/") {
@@ -236,7 +235,6 @@ impl Dispatch {
 
             let enc = det.guess(None, true);
 
-            charset_encode = false;
             content_type.push_str(&format!("; charset={}", enc.name()));
         }
 
@@ -244,7 +242,7 @@ impl Dispatch {
             .header("cache-control", "must-revalidate")
             .header("accept-ranges", "bytes")
             .header("content-type", content_type)
-            .charset_encode(charset_encode)
+            .charset_encode(false) // serve text files as is
             .header("last-modified", httpdate::fmt_http_date(modified));
 
         let (body, res) = self.create_body(length, peek, res).await?;
