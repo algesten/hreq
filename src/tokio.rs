@@ -1,22 +1,27 @@
-use crate::Stream;
-use crate::{AsyncRead, AsyncWrite};
-// use std::fmt;
+use crate::{AsyncRead, AsyncSeek, AsyncWrite};
+use futures_util::ready;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio_lib::io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite};
+use tokio_lib::io::{
+    AsyncRead as TokioAsyncRead, AsyncSeek as TokioAsyncSeek, AsyncWrite as TokioAsyncWrite,
+};
 
 #[cfg(feature = "tokio")]
 pub(crate) fn from_tokio<Z>(adapted: Z) -> FromAdapter<Z>
 where
     Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static,
 {
-    FromAdapter { adapted }
+    FromAdapter {
+        adapted,
+        waiting_for_seek: false,
+    }
 }
 
 pub(crate) struct FromAdapter<Z> {
     adapted: Z,
+    waiting_for_seek: bool,
 }
 
 impl<Z: TokioAsyncRead + Unpin> AsyncRead for FromAdapter<Z> {
@@ -45,4 +50,24 @@ impl<Z: TokioAsyncWrite + Unpin> AsyncWrite for FromAdapter<Z> {
     }
 }
 
-impl<Z> Stream for FromAdapter<Z> where Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static {}
+impl<Z> AsyncSeek for FromAdapter<Z>
+where
+    Z: TokioAsyncSeek + Unpin,
+{
+    fn poll_seek(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        pos: io::SeekFrom,
+    ) -> Poll<io::Result<u64>> {
+        let this = self.get_mut();
+
+        if !this.waiting_for_seek {
+            ready!(Pin::new(&mut this.adapted).start_seek(cx, pos))?;
+            this.waiting_for_seek = true;
+        }
+
+        let rx = ready!(Pin::new(&mut this.adapted).poll_complete(cx));
+        this.waiting_for_seek = false;
+        rx.into()
+    }
+}

@@ -378,7 +378,7 @@ use once_cell::sync::Lazy;
 
 pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| format!("rust/hreq/{}", crate::VERSION));
 
-pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
+pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncSeek, AsyncWrite};
 
 pub use crate::async_impl::AsyncRuntime;
 pub use crate::block_ext::BlockExt;
@@ -421,4 +421,7 @@ pub mod prelude {
 }
 
 pub(crate) trait Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static {}
-impl Stream for Box<dyn Stream> {}
+impl<Z: AsyncRead + AsyncWrite + Unpin + Send + 'static> Stream for Z {}
+
+pub(crate) trait AsyncReadSeek: AsyncRead + AsyncSeek {}
+impl<Z: AsyncRead + AsyncSeek> AsyncReadSeek for Z {}

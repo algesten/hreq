@@ -3,15 +3,17 @@
 use crate::either::Either;
 use crate::Error;
 use crate::Stream;
+use crate::{AsyncRead, AsyncReadSeek, AsyncSeek, AsyncWrite};
 use futures_util::future::poll_fn;
 use once_cell::sync::Lazy;
 use std::future::Future;
 use std::io;
+use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Mutex;
+use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
-
-use std::net::SocketAddr;
 
 #[cfg(feature = "tokio")]
 use tokio_lib::runtime::Runtime as TokioRuntime;
@@ -243,7 +245,7 @@ impl AsyncRuntime {
         }
     }
 
-    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncRead {
+    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncReadSeek {
         use Inner::*;
         match current() {
             AsyncStd => Either::A(async_std::file_to_reader(file)),
@@ -276,7 +278,7 @@ mod async_std {
         unreachable!();
     }
 
-    pub(crate) fn file_to_reader(_: std::fs::File) -> impl AsyncRead {
+    pub(crate) fn file_to_reader(_: std::fs::File) -> impl AsyncReadSeek {
         FakeStream
     }
 }
@@ -287,8 +289,6 @@ pub(crate) mod async_std {
     use super::*;
     use async_std_lib::net::TcpStream;
     use async_std_lib::task;
-
-    impl Stream for TcpStream {}
 
     pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
         Ok(TcpStream::connect(addr).await?)
@@ -318,7 +318,7 @@ pub(crate) mod async_std {
         Ok(Listener::AsyncStd(listener))
     }
 
-    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncRead {
+    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncReadSeek {
         let file: async_std_lib::fs::File = file.into();
         file
     }
@@ -358,7 +358,7 @@ pub(crate) mod async_tokio {
         unreachable!();
     }
 
-    pub(crate) fn file_to_reader(_: std::fs::File) -> impl AsyncRead {
+    pub(crate) fn file_to_reader(_: std::fs::File) -> impl AsyncReadSeek {
         FakeStream
     }
 }
@@ -461,7 +461,7 @@ pub(crate) mod async_tokio {
         Ok(Listener::Tokio(listener))
     }
 
-    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncRead {
+    pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncReadSeek {
         let file = tokio_lib::fs::File::from_std(file);
         from_tokio(file)
     }
@@ -490,13 +490,6 @@ impl FakeListener {
 // filler in for "impl Stream" type
 struct FakeStream;
 
-use crate::AsyncRead;
-use crate::AsyncWrite;
-use std::pin::Pin;
-use std::task::Context;
-
-impl Stream for FakeStream {}
-
 impl AsyncRead for FakeStream {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -518,6 +511,16 @@ impl AsyncWrite for FakeStream {
         unreachable!()
     }
     fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<futures_io::Result<()>> {
+        unreachable!()
+    }
+}
+
+impl AsyncSeek for FakeStream {
+    fn poll_seek(
+        self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        _: io::SeekFrom,
+    ) -> Poll<io::Result<u64>> {
         unreachable!()
     }
 }

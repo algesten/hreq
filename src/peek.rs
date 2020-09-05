@@ -1,5 +1,4 @@
-use crate::Stream;
-use crate::{AsyncRead, AsyncWrite};
+use crate::{AsyncRead, AsyncSeek, AsyncWrite};
 use futures_util::io::AsyncReadExt;
 use std::io;
 use std::pin::Pin;
@@ -73,4 +72,17 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Peekable<S> {
     }
 }
 
-impl<S: Stream> Stream for Peekable<S> {}
+impl<S: AsyncSeek + Unpin> AsyncSeek for Peekable<S> {
+    fn poll_seek(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        pos: io::SeekFrom,
+    ) -> Poll<io::Result<u64>> {
+        let this = self.get_mut();
+
+        // repositioning dumps buffered content
+        this.buf.clear();
+
+        Pin::new(&mut this.stream).poll_seek(cx, pos)
+    }
+}

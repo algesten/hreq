@@ -1,5 +1,4 @@
-use crate::Stream;
-use crate::{AsyncRead, AsyncWrite};
+use crate::{AsyncRead, AsyncSeek, AsyncWrite};
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -22,6 +21,19 @@ impl<A: AsyncRead + Unpin, B: AsyncRead + Unpin> AsyncRead for Either<A, B> {
         match self.get_mut() {
             Either::A(a) => Pin::new(a).poll_read(cx, buf),
             Either::B(b) => Pin::new(b).poll_read(cx, buf),
+        }
+    }
+}
+
+impl<A: AsyncSeek + Unpin, B: AsyncSeek + Unpin> AsyncSeek for Either<A, B> {
+    fn poll_seek(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        pos: io::SeekFrom,
+    ) -> Poll<io::Result<u64>> {
+        match self.get_mut() {
+            Either::A(a) => Pin::new(a).poll_seek(cx, pos),
+            Either::B(b) => Pin::new(b).poll_seek(cx, pos),
         }
     }
 }
@@ -50,8 +62,6 @@ impl<A: AsyncWrite + Unpin, B: AsyncWrite + Unpin> AsyncWrite for Either<A, B> {
         }
     }
 }
-
-impl<A: Stream, B: Stream> Stream for Either<A, B> {}
 
 #[cfg(feature = "server")]
 impl<A, B, T> FutStream for Either<A, B>

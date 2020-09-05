@@ -311,8 +311,6 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncWrite for TlsStream<S, E> {
     }
 }
 
-impl<S: Stream, E: Session + Unpin + 'static> Stream for TlsStream<S, E> {}
-
 /// Helper struct to adapt some buffers into a blocking `io::Read` and `io::Write`.
 ///
 /// If we attempt to `.read()` when `read_buf` is empty, we return an `io::ErrorKind::WouldBlock`.
