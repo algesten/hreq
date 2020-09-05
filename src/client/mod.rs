@@ -9,7 +9,7 @@ mod cookies;
 mod req_ext;
 mod reqb_ext;
 
-pub use agent::Agent;
+pub use agent::{Agent, ResponseFuture};
 pub use req_ext::RequestExt;
 pub use reqb_ext::RequestBuilderExt;
 

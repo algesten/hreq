@@ -14,6 +14,9 @@ use crate::Error;
 use crate::ResponseExt;
 use cookie::Cookie;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 /// Agents provide redirects, connection pooling, cookies and retries.
@@ -176,6 +179,13 @@ impl Agent {
         }
         let ret = None;
         Ok(ret)
+    }
+
+    pub(crate) fn send_future<'a>(mut self, req: http::Request<Body>) -> ResponseFuture {
+        let do_fut = async move { self.send(req).await };
+        ResponseFuture {
+            req: Box::new(do_fut),
+        }
     }
 
     /// Sends a request using this agent.
@@ -474,5 +484,28 @@ fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Agent")
+    }
+}
+
+/// A future hreq response.
+///
+/// Instances should be `.await` or `.block()`.
+pub struct ResponseFuture {
+    req: Box<dyn Future<Output = Result<http::Response<Body>, Error>>>,
+}
+
+impl Future for ResponseFuture {
+    type Output = Result<http::Response<Body>, Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        // this unsafe is ok because the boxed closure is not going to move anywhere.
+        unsafe { Pin::new_unchecked(&mut *this.req) }.poll(cx)
+    }
+}
+
+impl fmt::Debug for ResponseFuture {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ResponseFuture")
     }
 }

@@ -361,7 +361,7 @@ mod psl;
 mod res_ext;
 mod uri_ext;
 
-pub use client::Agent;
+pub use client::{Agent, ResponseFuture};
 
 #[cfg(feature = "server")]
 pub mod server;
@@ -413,6 +413,7 @@ pub mod prelude {
 
     #[doc(no_inline)]
     pub use crate::{BlockExt, Body, RequestBuilderExt, RequestExt, ResponseExt};
+
     #[doc(no_inline)]
     pub use http::{Request, Response};
 

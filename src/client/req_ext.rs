@@ -1,11 +1,10 @@
 //! Extension trait for `http::request::Request`
 
+use crate::client::agent::ResponseFuture;
 use crate::client::Agent;
 use crate::head_ext::HeaderMapExt;
 use crate::Body;
-use crate::Error;
-use async_trait::async_trait;
-use http::{Request, Response};
+use http::Request;
 use std::str::FromStr;
 
 /// Extends [`http::request::Request`] with ergonomic extras for hreq.
@@ -13,7 +12,6 @@ use std::str::FromStr;
 /// These extensions are part of the primary goal of hreq to provide a "User first API".
 ///
 /// [`http::request::Request`]: https://docs.rs/http/latest/http/request/struct.Request.html
-#[async_trait]
 pub trait RequestExt {
     /// Quickly read a header value as a `&str`.
     ///
@@ -59,13 +57,6 @@ pub trait RequestExt {
 
     /// Send this request.
     ///
-    /// Note: The type signature of this function is complicated because rust doesn't yet
-    /// support the `async` keyword in traits. You can think of this function as:
-    ///
-    /// ```ignore
-    /// async fn send(self) -> Result<Response<Body>, Error>;
-    /// ```
-    ///
     /// Creates a default configured [`Agent`] used for this request only. The agent will
     /// follow redirects and provide some retry-logic for idempotent request methods.
     ///
@@ -82,10 +73,9 @@ pub trait RequestExt {
     /// ```
     ///
     /// [`Agent`]: struct.Agent.html
-    async fn send(self) -> Result<Response<Body>, Error>;
+    fn send(self) -> ResponseFuture;
 }
 
-#[async_trait]
 impl<B: Into<Body> + Send> RequestExt for Request<B> {
     //
     fn header(&self, key: &str) -> Option<&str> {
@@ -96,12 +86,12 @@ impl<B: Into<Body> + Send> RequestExt for Request<B> {
         self.headers().get_as(key)
     }
 
-    async fn send(self) -> Result<Response<Body>, Error> {
+    fn send(self) -> ResponseFuture {
         //
-        let mut agent = Agent::new();
+        let agent = Agent::new();
 
         let (parts, body) = self.into_parts();
         let req = Request::from_parts(parts, body.into());
-        agent.send(req).await
+        agent.send_future(req)
     }
 }

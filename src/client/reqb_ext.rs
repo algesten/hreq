@@ -1,15 +1,14 @@
 //! Extension trait for `http::request::Builder`
 
 use super::req_ext::RequestExt;
+use crate::client::agent::ResponseFuture;
 use crate::params::QueryParams;
 use crate::params::{AutoCharset, HReqParams};
 use crate::uri_ext::HostPort;
 use crate::Body;
-use crate::Error;
-use async_trait::async_trait;
 use encoding_rs::Encoding;
 use http::request;
-use http::{Request, Response};
+use http::Request;
 use serde::Serialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +18,6 @@ use std::time::Duration;
 /// These extensions are part of the primary goal of hreq to provide a "User first API".
 ///
 /// [`http::request::Builder`]: https://docs.rs/http/latest/http/request/struct.Builder.html
-#[async_trait]
 pub trait RequestBuilderExt
 where
     Self: Sized,
@@ -402,15 +400,6 @@ where
 
     /// Send the built request with provided [`Body`].
     ///
-    /// Note: The type signature of this function is complicated because rust doesn't yet
-    /// support the `async` keyword in traits. You can think of this function as:
-    ///
-    /// ```ignore
-    /// async fn send<B>(self, body: B) -> Result<Response<Body>, Error>
-    /// where
-    ///     B: Into<Body> + Send;
-    /// ```
-    ///
     /// This is a shortcut to both provide a body and send the request. The following
     /// statements are roughly equivalent.
     ///
@@ -434,7 +423,7 @@ where
     ///
     /// [`Body`]: struct.Body.html
     /// [`Agent`]: struct.Agent.html
-    async fn send<B>(self, body: B) -> Result<Response<Body>, Error>
+    fn send<B>(self, body: B) -> ResponseFuture
     where
         B: Into<Body> + Send;
 
@@ -442,20 +431,13 @@ where
     ///
     /// Typically used for get requests.
     ///
-    /// Note: The type signature of this function is complicated because rust doesn't yet
-    /// support the `async` keyword in traits. You can think of this function as:
-    ///
-    /// ```ignore
-    /// async fn call(self) -> Result<Response<Body>, Error>;
-    /// ```
-    ///
     /// ```
     /// use hreq::prelude::*;
     ///
     /// let res = Request::get("https://httpbin.org/get")
     ///     .call().block();
     /// ```
-    async fn call(self) -> Result<Response<Body>, Error>;
+    fn call(self) -> ResponseFuture;
 
     /// Finish building the request by providing an object serializable to JSON.
     ///
@@ -487,22 +469,12 @@ where
 
     /// Send the built request with provided JSON object serialized to a body.
     ///
-    /// Note: The type signature of this function is complicated because rust doesn't yet
-    /// support the `async` keyword in traits. You can think of this function as:
-    ///
-    /// ```ignore
-    /// async fn send_json<B>(self, body: &B) -> Result<Response<Body>, Error>
-    /// where
-    ///     B: Serialize + ?Sized + Send + Sync;
-    /// ```
-    ///
     /// This is a shortcut to both provide a JSON body and send the request.
-    async fn send_json<B>(self, body: &B) -> Result<Response<Body>, Error>
+    fn send_json<B>(self, body: &B) -> ResponseFuture
     where
         B: Serialize + ?Sized + Send + Sync;
 }
 
-#[async_trait]
 impl RequestBuilderExt for request::Builder {
     //
     fn query(self, key: &str, value: &str) -> Self {
@@ -597,16 +569,16 @@ impl RequestBuilderExt for request::Builder {
         self.body(body.into())
     }
 
-    async fn send<B>(self, body: B) -> Result<Response<Body>, Error>
+    fn send<B>(self, body: B) -> ResponseFuture
     where
         B: Into<Body> + Send,
     {
-        let req = self.with_body(body)?;
-        Ok(req.send().await?)
+        let req = self.with_body(body).expect("send with body");
+        req.send()
     }
 
-    async fn call(self) -> Result<Response<Body>, Error> {
-        Ok(self.send(()).await?)
+    fn call(self) -> ResponseFuture {
+        self.send(())
     }
 
     fn with_json<B: Serialize + ?Sized>(self, body: &B) -> http::Result<Request<Body>> {
@@ -614,12 +586,12 @@ impl RequestBuilderExt for request::Builder {
         self.with_body(body)
     }
 
-    async fn send_json<B>(self, body: &B) -> Result<Response<Body>, Error>
+    fn send_json<B>(self, body: &B) -> ResponseFuture
     where
         B: Serialize + ?Sized + Send + Sync,
     {
-        let req = self.with_json(body)?;
-        Ok(req.send().await?)
+        let req = self.with_json(body).expect("send with json");
+        req.send()
     }
 }
 
