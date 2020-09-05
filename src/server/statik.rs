@@ -36,6 +36,33 @@ pub fn serve_dir(path: impl AsRef<Path>) -> impl Handler {
 
 struct DirHandler(PathBuf);
 
+impl Handler for DirHandler {
+    fn call<'a>(&'a self, req: Request<Body>) -> Pin<Box<dyn Future<Output = Reply> + Send + 'a>> {
+        let params = req.path_params();
+
+        if params.is_empty() {
+            let msg = "serve_dir() must be used with a path param. Example: /dir/*file";
+
+            warn!("{}", msg);
+
+            Box::pin(async move { err(500, msg).into() })
+        } else if params.len() > 1 {
+            let msg = "serve_dir() should be used with one path param. Example: /dir/*file";
+
+            warn!("{}", msg);
+
+            Box::pin(async move { err(500, msg).into() })
+        } else {
+            let to_serve = params[0].1.to_owned();
+
+            Box::pin(async move {
+                let ret = self.handle(to_serve, &req).await;
+                ret.into()
+            })
+        }
+    }
+}
+
 fn err(status: u16, msg: &str) -> http::Response<Body> {
     http::Response::builder()
         .status(status)
@@ -79,10 +106,68 @@ impl DirHandler {
             absolute.push("index.html");
         }
 
-        let (if_modified_since, is_head, range) = file_serve_headers(req);
+        let d = Dispatch::new(absolute, req);
 
-        if let Some(since) = if_modified_since {
-            if let Ok(modified) = absolute.metadata().and_then(|v| v.modified()) {
+        Ok(d.into_response().await?)
+    }
+}
+
+struct Dispatch {
+    file: PathBuf,
+    if_modified_since: Option<SystemTime>,
+    is_head: bool,
+    range: Option<(u64, u64)>,
+}
+
+impl Dispatch {
+    fn new(file: PathBuf, req: &http::Request<Body>) -> Self {
+        let if_modified_since = req
+            .headers()
+            .get_as::<String>("if-modified-since")
+            .and_then(|v| parse_http_date(&v).ok());
+
+        let is_head = req.method() == http::Method::HEAD;
+
+        let is_get = req.method() == http::Method::GET;
+
+        // https://tools.ietf.org/html/rfc7233#section-3.1
+        // A server MUST ignore a Range header field received with a request method other than GET.
+        //
+        // Range: bytes=0-1023
+        let range = if is_get {
+            req.headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+                .filter(|v| v.starts_with("bytes="))
+                .map(|v| &v[6..])
+                .and_then(|v| {
+                    if let Some(i) = v.find('-') {
+                        Some((&v[0..i], &v[i + 1..]))
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|(s, e)| match (s.parse::<u64>(), e.parse::<u64>()) {
+                    (Ok(s), Ok(e)) => Some((s, e)),
+                    _ => None,
+                })
+                // incoming range is end inclusive, internal arithmetic is exclusive.
+                .map(|(s, e)| (s, e + 1))
+        } else {
+            None
+        };
+
+        Dispatch {
+            file,
+            if_modified_since,
+            is_head,
+            range,
+        }
+    }
+
+    async fn into_response(self) -> Result<http::Response<Body>, Error> {
+        if let Some(since) = self.if_modified_since {
+            if let Ok(modified) = self.file.metadata().and_then(|v| v.modified()) {
                 // for files that updated, since will be earlier than modified.
                 if let Ok(diff) = modified.duration_since(since) {
                     // The web format has a resultion of seconds: Fri, 15 May 2015 15:34:21 GMT
@@ -105,12 +190,12 @@ impl DirHandler {
             }
         }
 
-        let body = match Body::from_path_io(&absolute, is_head, range).await {
+        let body = match Body::from_path_io(&self.file, self.is_head, self.range).await {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Ok(err(404, "Not found"));
                 } else {
-                    warn!("File open failed ({:?}): {:?}", absolute, e);
+                    warn!("File open failed ({:?}): {:?}", self.file, e);
                     return Ok(err(500, "Failed"));
                 }
             }
@@ -123,71 +208,4 @@ impl DirHandler {
             .body(body)
             .unwrap())
     }
-}
-
-impl Handler for DirHandler {
-    fn call<'a>(&'a self, req: Request<Body>) -> Pin<Box<dyn Future<Output = Reply> + Send + 'a>> {
-        let params = req.path_params();
-
-        if params.is_empty() {
-            let msg = "serve_dir() must be used with a path param. Example: /dir/*file";
-
-            warn!("{}", msg);
-
-            Box::pin(async move { err(500, msg).into() })
-        } else if params.len() > 1 {
-            let msg = "serve_dir() should be used with one path param. Example: /dir/*file";
-
-            warn!("{}", msg);
-
-            Box::pin(async move { err(500, msg).into() })
-        } else {
-            let to_serve = params[0].1.to_owned();
-
-            Box::pin(async move {
-                let ret = self.handle(to_serve, &req).await;
-                ret.into()
-            })
-        }
-    }
-}
-
-fn file_serve_headers(req: &http::Request<Body>) -> (Option<SystemTime>, bool, Option<(u64, u64)>) {
-    let if_modified_since = req
-        .headers()
-        .get_as::<String>("if-modified-since")
-        .and_then(|v| parse_http_date(&v).ok());
-
-    let is_head = req.method() == http::Method::HEAD;
-
-    let is_get = req.method() == http::Method::GET;
-
-    // https://tools.ietf.org/html/rfc7233#section-3.1
-    // A server MUST ignore a Range header field received with a request method other than GET.
-    //
-    // Range: bytes=0-1023
-    let range = if is_get {
-        req.headers()
-            .get("range")
-            .and_then(|v| v.to_str().ok())
-            .filter(|v| v.starts_with("bytes="))
-            .map(|v| &v[6..])
-            .and_then(|v| {
-                if let Some(i) = v.find('-') {
-                    Some((&v[0..i], &v[i + 1..]))
-                } else {
-                    None
-                }
-            })
-            .and_then(|(s, e)| match (s.parse::<u64>(), e.parse::<u64>()) {
-                (Ok(s), Ok(e)) => Some((s, e)),
-                _ => None,
-            })
-            // incoming range is end inclusive, internal arithmetic is exclusive.
-            .map(|(s, e)| (s, e + 1))
-    } else {
-        None
-    };
-
-    (if_modified_since, is_head, range)
 }
