@@ -169,8 +169,7 @@ impl DirHandler {
     async fn handle(
         &self,
         to_serve: String,
-        if_modified_since: Option<SystemTime>,
-        is_head: bool,
+        req: &Request<Body>,
     ) -> Result<http::Response<Body>, Error> {
         // Use the segment from the /*name appended to the dir we use.
         // This could be relative such as `"/path/to/serve"` + `"blah/../foo.txt"`
@@ -202,6 +201,8 @@ impl DirHandler {
             absolute.push("index.html");
         }
 
+        let (if_modified_since, is_head, range) = file_serve_headers(req);
+
         if let Some(since) = if_modified_since {
             if let Ok(modified) = absolute.metadata().and_then(|v| v.modified()) {
                 // for files that updated, since will be earlier than modified.
@@ -226,7 +227,7 @@ impl DirHandler {
             }
         }
 
-        let body = match Body::from_path_io(&absolute, is_head).await {
+        let body = match Body::from_path_io(&absolute, is_head, range).await {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Ok(err(404, "Not found"));
@@ -240,6 +241,7 @@ impl DirHandler {
 
         Ok(http::Response::builder()
             .header("cache-control", "must-revalidate")
+            .header("accept-ranges", "bytes")
             .body(body)
             .unwrap())
     }
@@ -263,16 +265,51 @@ impl Handler for DirHandler {
             Box::pin(async move { err(500, msg).into() })
         } else {
             let to_serve = params[0].1.to_owned();
-            let if_modified_since = req
-                .headers()
-                .get_as::<String>("if-modified-since")
-                .and_then(|v| parse_http_date(&v).ok());
-            let is_head = req.method() == http::Method::HEAD;
 
             Box::pin(async move {
-                let ret = self.handle(to_serve, if_modified_since, is_head).await;
+                let ret = self.handle(to_serve, &req).await;
                 ret.into()
             })
         }
     }
+}
+
+fn file_serve_headers(req: &http::Request<Body>) -> (Option<SystemTime>, bool, Option<(u64, u64)>) {
+    let if_modified_since = req
+        .headers()
+        .get_as::<String>("if-modified-since")
+        .and_then(|v| parse_http_date(&v).ok());
+
+    let is_head = req.method() == http::Method::HEAD;
+
+    let is_get = req.method() == http::Method::GET;
+
+    // https://tools.ietf.org/html/rfc7233#section-3.1
+    // A server MUST ignore a Range header field received with a request method other than GET.
+    //
+    // Range: bytes=0-1023
+    let range = if is_get {
+        req.headers()
+            .get("range")
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| v.starts_with("bytes="))
+            .map(|v| &v[6..])
+            .and_then(|v| {
+                if let Some(i) = v.find('-') {
+                    Some((&v[0..i], &v[i + 1..]))
+                } else {
+                    None
+                }
+            })
+            .and_then(|(s, e)| match (s.parse::<u64>(), e.parse::<u64>()) {
+                (Ok(s), Ok(e)) => Some((s, e)),
+                _ => None,
+            })
+            // incoming range is end inclusive, internal arithmetic is exclusive.
+            .map(|(s, e)| (s, e + 1))
+    } else {
+        None
+    };
+
+    (if_modified_since, is_head, range)
 }

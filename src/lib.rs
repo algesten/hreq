@@ -353,6 +353,7 @@ mod deadline;
 mod either;
 mod error;
 mod head_ext;
+mod limit;
 mod params;
 mod peek;
 mod proto;

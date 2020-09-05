@@ -242,11 +242,100 @@ fn server_serve_dir_head() -> Result<(), hreq::Error> {
         Some("text/plain; charset=windows-1252")
     );
 
+    assert_eq!(res.header("accept-ranges"), Some("bytes"));
+
     let len: u64 = res.header_as("content-length").unwrap();
     assert!(len > 0);
 
     let s = res.into_body().read_to_string().block()?;
     assert!(s.is_empty());
+
+    Ok(())
+}
+
+#[test]
+fn server_serve_dir_range() -> Result<(), hreq::Error> {
+    common::setup_logger();
+
+    let mut server = Server::new();
+    server
+        .at("/my/special/*path")
+        .get(hreq::server::serve_dir("tests/data"));
+
+    let (handle, addr) = server.listen(0).block()?;
+
+    hreq::AsyncRuntime::spawn(async move {
+        handle.keep_alive().await;
+    });
+
+    {
+        let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
+        let res = http::Request::get(uri)
+            .header("range", "bytes=7-9")
+            .call()
+            .block()?;
+
+        assert_eq!(res.status(), 206);
+        assert_eq!(res.header("content-range"), Some("bytes 7-9/47"));
+        assert_eq!(res.header("content-length"), Some("3"));
+
+        let s = res.into_body().read_to_string().block()?;
+        assert_eq!(s, "the");
+    }
+
+    {
+        let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
+        let res = http::Request::get(uri)
+            .header("range", "bytes=46-46") // in range, last byte
+            .call()
+            .block()?;
+
+        assert_eq!(res.status(), 206);
+        assert_eq!(res.header("content-range"), Some("bytes 46-46/47"));
+        assert_eq!(res.header("content-length"), Some("1"));
+
+        let s = res.into_body().read_to_string().block()?;
+        assert_eq!(s, "\n");
+    }
+
+    {
+        let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
+        let res = http::Request::get(uri)
+            .header("range", "bytes=47-47") // out of range
+            .call()
+            .block()?;
+
+        assert_eq!(res.status(), 416);
+
+        let s = res.into_body().read_to_string().block()?;
+        assert_eq!(s, "");
+    }
+
+    {
+        let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
+        let res = http::Request::get(uri)
+            .header("range", "bytes=46-47") // out of range
+            .call()
+            .block()?;
+
+        assert_eq!(res.status(), 416);
+
+        let s = res.into_body().read_to_string().block()?;
+        assert_eq!(s, "");
+    }
+
+    {
+        let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
+        let res = http::Request::get(uri)
+            .header("range", "bytes=45-44") // incorrect range
+            .call()
+            .block()?;
+
+        assert_eq!(res.status(), 416);
+
+        let s = res.into_body().read_to_string().block()?;
+        assert_eq!(s, "");
+    }
 
     Ok(())
 }
