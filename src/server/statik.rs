@@ -182,35 +182,32 @@ impl Dispatch {
     }
 
     async fn into_response_io(self) -> io::Result<http::Response<Body>> {
+        let file = std::fs::File::open(&self.file)?;
+        let meta = file.metadata()?;
+        let length = meta.len();
+        let modified = meta.modified()?;
+
         if let Some(since) = self.if_modified_since {
-            if let Ok(modified) = self.file.metadata().and_then(|v| v.modified()) {
-                // for files that updated, since will be earlier than modified.
-                if let Ok(diff) = modified.duration_since(since) {
-                    // The web format has a resultion of seconds: Fri, 15 May 2015 15:34:21 GMT
-                    // So the diff must be less than a second.
-                    if diff.as_secs_f32() < 1.0 {
-                        return Ok(http::Response::builder()
-                            .status(304)
-                            // https://tools.ietf.org/html/rfc7232#section-4.1
-                            //
-                            // The server generating a 304 response MUST generate any of the
-                            // following header fields that would have been sent in a 200 (OK)
-                            // response to the same request: Cache-Control, Content-Location, Date,
-                            // ETag, Expires, and Vary.
-                            .header("cache-control", "must-revalidate")
-                            .header("last-modified", fmt_http_date(modified))
-                            .body(().into())
-                            .unwrap());
-                    }
+            // for files that updated, since will be earlier than modified.
+            if let Ok(diff) = modified.duration_since(since) {
+                // The web format has a resultion of seconds: Fri, 15 May 2015 15:34:21 GMT
+                // So the diff must be less than a second.
+                if diff.as_secs_f32() < 1.0 {
+                    return Ok(http::Response::builder()
+                        // https://tools.ietf.org/html/rfc7232#section-4.1
+                        //
+                        // The server generating a 304 response MUST generate any of the
+                        // following header fields that would have been sent in a 200 (OK)
+                        // response to the same request: Cache-Control, Content-Location, Date,
+                        // ETag, Expires, and Vary.
+                        .status(http::StatusCode::NOT_MODIFIED)
+                        .header("cache-control", "must-revalidate")
+                        .header("last-modified", fmt_http_date(modified))
+                        .body(Body::empty())
+                        .unwrap());
                 }
             }
         }
-
-        let file = std::fs::File::open(&self.file)?;
-        let meta = file.metadata()?;
-
-        let length = meta.len();
-        let modified = meta.modified()?;
 
         let guess = mime_guess::from_path(&self.file);
         let mut content_type = if let Some(mime) = guess.first() {
@@ -253,7 +250,7 @@ impl Dispatch {
     async fn create_body<Z: AsyncReadSeek + Unpin + Send + Sync + 'static>(
         &self,
         length: u64,
-        mut peek: Z,
+        mut reader: Z,
         mut res: http::response::Builder,
     ) -> io::Result<(Body, http::response::Builder)> {
         let body = if self.is_head {
@@ -262,19 +259,19 @@ impl Dispatch {
             Body::empty()
         } else if let Some((start, end)) = self.range {
             if end <= start || start >= length || end > length {
-                debug!("Bad range {}-{} of {}", start, end, length);
+                debug!("Bad range [{}..{}] of {}", start, end, length);
 
                 res = res.status(http::StatusCode::RANGE_NOT_SATISFIABLE);
 
                 Body::empty()
             } else {
-                debug!("Serve range {}-{}/{}", start, end, length);
+                debug!("Serve range [{}..{}] of {}", start, end, length);
 
-                peek.seek(io::SeekFrom::Start(start)).await?;
+                reader.seek(io::SeekFrom::Start(start)).await?;
 
                 let sub = end - start;
 
-                let limit = ContentLengthRead::new(peek, sub);
+                let limit = ContentLengthRead::new(reader, sub);
 
                 res = res.status(http::StatusCode::PARTIAL_CONTENT).header(
                     "content-range",
@@ -284,7 +281,7 @@ impl Dispatch {
                 Body::from_async_read(limit, Some(sub))
             }
         } else {
-            Body::from_async_read(peek, Some(length))
+            Body::from_async_read(reader, Some(length))
         };
 
         Ok((body, res))
