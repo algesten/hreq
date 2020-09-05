@@ -2,16 +2,13 @@
 
 use crate::charset::CharCodec;
 use crate::head_ext::HeaderMapExt;
-use crate::limit::ContentLengthRead;
 use crate::params::HReqParams;
-use crate::peek::Peekable;
 use crate::AsyncRead;
 use crate::AsyncRuntime;
 use crate::Error;
 use bytes::Bytes;
 use encoding_rs::Encoding;
 use futures_util::future::poll_fn;
-use futures_util::io::AsyncSeekExt;
 use futures_util::io::BufReader;
 use futures_util::ready;
 use hreq_h1::RecvStream as H1RecvStream;
@@ -21,11 +18,9 @@ use serde::Serialize;
 use std::fmt;
 use std::future::Future;
 use std::io;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::SystemTime;
 
 #[cfg(feature = "gzip")]
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
@@ -170,33 +165,13 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
 pub struct Body {
     codec: BufReader<BodyCodec>,
-    length: BodyLen,
-    content_typ: Option<String>,
-    last_modified: Option<SystemTime>,
+    length: Option<u64>, // incoming length if given with reader
+    content_typ: Option<&'static str>,
     override_source_enc: Option<&'static Encoding>,
     has_read: bool,
     char_codec: Option<CharCodec>,
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BodyLen {
-    Unknown,
-    Length(u64),
-    Range(u64, u64, u64),
-    BadRange,
-}
-
-impl BodyLen {
-    fn amount(&self) -> Option<u64> {
-        match self {
-            BodyLen::Unknown => None,
-            BodyLen::Length(l) => Some(*l),
-            BodyLen::Range(s, e, _) => Some(e - s),
-            BodyLen::BadRange => Some(0),
-        }
-    }
 }
 
 impl Body {
@@ -379,15 +354,6 @@ impl Body {
         Body::from_async_read(reader, length).ctype(CT_BIN)
     }
 
-    pub(crate) async fn from_path_io(
-        path: impl AsRef<Path>,
-        is_head: bool,
-        range: Option<(u64, u64)>,
-    ) -> Result<Self, io::Error> {
-        let body = path_to_body(path.as_ref(), is_head, range).await?;
-        Ok(body)
-    }
-
     /// Creates a body from a JSON encodable type.
     ///
     /// This also sets the `content-type` and `content-length` headers.
@@ -456,16 +422,10 @@ impl Body {
     pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>) -> Self {
         let reader = BodyReader::new(bimpl);
         let codec = BufReader::new(BodyCodec::deferred(reader));
-        let length = if let Some(len) = length {
-            BodyLen::Length(len)
-        } else {
-            BodyLen::Unknown
-        };
         Body {
             codec,
             length,
             content_typ: None,
-            last_modified: None,
             override_source_enc: None,
             has_read: false,
             char_codec: None,
@@ -475,7 +435,7 @@ impl Body {
     }
 
     fn ctype(mut self, c: &'static str) -> Self {
-        self.content_typ = Some(c.to_string());
+        self.content_typ = Some(c);
         self
     }
 
@@ -485,22 +445,12 @@ impl Body {
 
     /// Tells if we know _for sure_, there is no body.
     pub(crate) fn is_definitely_no_body(&self) -> bool {
-        match self.length {
-            BodyLen::Unknown => false,
-            BodyLen::Length(l) => l == 0,
-            BodyLen::Range(s, e, _) => e - s == 0,
-            BodyLen::BadRange => true,
-        }
+        self.length.map(|l| l == 0).unwrap_or(false)
     }
 
     /// Tells if we know _for sure_, there is a body. Sized or unsized.
     pub(crate) fn is_definitely_a_body(&self) -> bool {
-        match self.length {
-            BodyLen::Unknown => true,
-            BodyLen::Length(l) => l > 0,
-            BodyLen::Range(s, e, _) => e - s > 0,
-            BodyLen::BadRange => false,
-        }
+        self.length.map(|l| l > 0).unwrap_or(true)
     }
 
     /// Tells the length of the body _with content encoding_. This could
@@ -510,35 +460,13 @@ impl Body {
             // things like gzip will affect self.length
             None
         } else {
-            self.length.amount()
+            self.length
         }
-    }
-
-    // If body is limited by a range request, return the range.
-    pub(crate) fn content_range(&self) -> Option<(u64, u64, u64)> {
-        if let BodyLen::Range(s, e, t) = &self.length {
-            Some((*s, *e, *t))
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn is_bad_range(&self) -> bool {
-        if let BodyLen::BadRange = self.length {
-            return true;
-        }
-        false
     }
 
     /// The content type set by the body, if any.
     pub(crate) fn content_type(&self) -> Option<&str> {
-        self.content_typ.as_ref().map(|s| &s[..])
-    }
-
-    /// Last modified set when reading files. Used server side.
-    #[allow(unused)]
-    pub(crate) fn last_modified(&self) -> Option<SystemTime> {
-        self.last_modified
+        self.content_typ
     }
 
     pub(crate) fn is_configurable(&self) -> bool {
@@ -1101,87 +1029,4 @@ impl fmt::Debug for Body {
         }?;
         write!(f, " }}")
     }
-}
-
-async fn path_to_body(
-    absolute: &Path,
-    is_head: bool,
-    range: Option<(u64, u64)>, // end exclusive
-) -> Result<Body, io::Error> {
-    let file = std::fs::File::open(&absolute)?;
-
-    let meta = file.metadata()?;
-
-    let length = meta.len();
-    let modified = meta.modified()?;
-
-    let guess = mime_guess::from_path(&absolute);
-    let mut content_type = if let Some(mime) = guess.first() {
-        mime.to_string()
-    } else {
-        CT_BIN.to_string()
-    };
-
-    let read = AsyncRuntime::file_to_reader(file);
-
-    const PEEK_LEN: usize = 1024;
-
-    let mut peek = Peekable::new(read, PEEK_LEN);
-
-    // For text files, we try to guess the character encoding.
-    if content_type.starts_with("text/") {
-        // attempt to guess charset
-        let max = (PEEK_LEN as u64).min(length);
-
-        let buf = peek.peek(max as usize).await?;
-
-        let mut det = chardetng::EncodingDetector::new();
-        det.feed(buf, length < PEEK_LEN as u64);
-
-        let enc = det.guess(None, true);
-
-        content_type.push_str(&format!("; charset={}", enc.name()));
-    }
-
-    let mut set_body_len = true;
-
-    let mut body = if is_head {
-        Body::empty()
-    } else {
-        if let Some((start, end)) = range {
-            set_body_len = false;
-
-            if end <= start || start >= length || end > length {
-                debug!("Bad range {}-{} of {}", start, end, length);
-                let mut body = Body::empty();
-
-                body.length = BodyLen::BadRange;
-
-                body
-            } else {
-                debug!("Serve range {}-{}/{}", start, end, length);
-
-                peek.seek(io::SeekFrom::Start(start)).await?;
-
-                let sub = end - start;
-
-                let limit = ContentLengthRead::new(peek, sub);
-
-                let mut body = Body::from_async_read(limit, None);
-                body.length = BodyLen::Range(start, end, length);
-
-                body
-            }
-        } else {
-            Body::from_async_read(peek, None)
-        }
-    };
-
-    if set_body_len {
-        body.length = BodyLen::Length(length);
-    }
-    body.content_typ = Some(content_type);
-    body.last_modified = Some(modified);
-
-    Ok(body)
 }

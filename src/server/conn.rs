@@ -211,26 +211,12 @@ pub(crate) fn configure_response(parts: &mut http::response::Parts, body: &Body,
     // guiding cache updates (e.g., Last-Modified might be useful if the
     // response does not have an ETag field).
     if !is304 {
-        if body.is_bad_range() {
-            parts.status = http::StatusCode::RANGE_NOT_SATISFIABLE;
-        }
-
         if let Some(len) = body.content_encoded_length() {
             // the body indicates a length (for sure).
             let user_set_length = parts.headers.get("content-length").is_some();
 
             if !user_set_length && (len > 0 || !parts.status.is_redirection()) {
                 parts.headers.set("content-length", len.to_string());
-
-                if let Some((start, end, total)) = body.content_range() {
-                    // internally we have all ranges as exclusive end
-                    parts.headers.set(
-                        "content-range",
-                        format!("bytes {}-{}/{}", start, end - 1, total),
-                    );
-
-                    parts.status = http::StatusCode::PARTIAL_CONTENT;
-                }
             }
         } else if !is_http2 && !parts.status.is_redirection() {
             // body does not indicate a length (like from a reader),
@@ -245,12 +231,6 @@ pub(crate) fn configure_response(parts: &mut http::response::Parts, body: &Body,
             if let Some(ctype) = body.content_type() {
                 parts.headers.set("content-type", ctype);
             }
-        }
-    }
-
-    if let Some(time) = body.last_modified() {
-        if parts.headers.get("last-modified").is_none() {
-            parts.headers.set("last-modified", fmt_http_date(time));
         }
     }
 

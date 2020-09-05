@@ -1,9 +1,14 @@
 use super::Reply;
 use crate::head_ext::HeaderMapExt;
+use crate::limit::ContentLengthRead;
+use crate::peek::Peekable;
 use crate::server::handler::Handler;
-use crate::server::ServerRequestExt;
+use crate::server::{ResponseBuilderExt, ServerRequestExt};
+use crate::AsyncReadSeek;
+use crate::AsyncRuntime;
 use crate::Body;
 use crate::Error;
+use futures_util::io::AsyncSeekExt;
 use http::Request;
 use httpdate::{fmt_http_date, parse_http_date};
 use std::future::Future;
@@ -166,6 +171,17 @@ impl Dispatch {
     }
 
     async fn into_response(self) -> Result<http::Response<Body>, Error> {
+        match self.into_response_io().await {
+            Ok(v) => Ok(v),
+            Err(e) => match e.kind() {
+                io::ErrorKind::NotFound => Ok(err(404, "File not found")),
+                io::ErrorKind::PermissionDenied => Ok(err(403, "File permission denied")),
+                _ => Err(e.into()),
+            },
+        }
+    }
+
+    async fn into_response_io(self) -> io::Result<http::Response<Body>> {
         if let Some(since) = self.if_modified_since {
             if let Ok(modified) = self.file.metadata().and_then(|v| v.modified()) {
                 // for files that updated, since will be earlier than modified.
@@ -190,22 +206,89 @@ impl Dispatch {
             }
         }
 
-        let body = match Body::from_path_io(&self.file, self.is_head, self.range).await {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::NotFound {
-                    return Ok(err(404, "Not found"));
-                } else {
-                    warn!("File open failed ({:?}): {:?}", self.file, e);
-                    return Ok(err(500, "Failed"));
-                }
-            }
-            Ok(v) => v,
+        let file = std::fs::File::open(&self.file)?;
+        let meta = file.metadata()?;
+
+        let length = meta.len();
+        let modified = meta.modified()?;
+
+        let guess = mime_guess::from_path(&self.file);
+        let mut content_type = if let Some(mime) = guess.first() {
+            mime.to_string()
+        } else {
+            "application/octet-stream".to_string()
         };
 
-        Ok(http::Response::builder()
+        let read = AsyncRuntime::file_to_reader(file);
+        const PEEK_LEN: usize = 1024;
+        let mut peek = Peekable::new(read, PEEK_LEN);
+        let mut charset_encode = true;
+
+        // For text files, we try to guess the character encoding.
+        if content_type.starts_with("text/") {
+            // attempt to guess charset
+            let max = (PEEK_LEN as u64).min(length);
+
+            let buf = peek.peek(max as usize).await?;
+
+            let mut det = chardetng::EncodingDetector::new();
+            det.feed(buf, length < PEEK_LEN as u64);
+
+            let enc = det.guess(None, true);
+
+            charset_encode = false;
+            content_type.push_str(&format!("; charset={}", enc.name()));
+        }
+
+        let res = http::Response::builder()
             .header("cache-control", "must-revalidate")
             .header("accept-ranges", "bytes")
-            .body(body)
-            .unwrap())
+            .header("content-type", content_type)
+            .charset_encode(charset_encode)
+            .header("last-modified", httpdate::fmt_http_date(modified));
+
+        let (body, res) = self.create_body(length, peek, res).await?;
+
+        Ok(res.body(body).unwrap())
+    }
+
+    async fn create_body<Z: AsyncReadSeek + Unpin + Send + Sync + 'static>(
+        &self,
+        length: u64,
+        mut peek: Z,
+        mut res: http::response::Builder,
+    ) -> io::Result<(Body, http::response::Builder)> {
+        let body = if self.is_head {
+            res = res.header("content-length", length.to_string());
+
+            Body::empty()
+        } else if let Some((start, end)) = self.range {
+            if end <= start || start >= length || end > length {
+                debug!("Bad range {}-{} of {}", start, end, length);
+
+                res = res.status(http::StatusCode::RANGE_NOT_SATISFIABLE);
+
+                Body::empty()
+            } else {
+                debug!("Serve range {}-{}/{}", start, end, length);
+
+                peek.seek(io::SeekFrom::Start(start)).await?;
+
+                let sub = end - start;
+
+                let limit = ContentLengthRead::new(peek, sub);
+
+                res = res.status(http::StatusCode::PARTIAL_CONTENT).header(
+                    "content-range",
+                    format!("bytes {}-{}/{}", start, end - 1, length),
+                );
+
+                Body::from_async_read(limit, Some(sub))
+            }
+        } else {
+            Body::from_async_read(peek, Some(length))
+        };
+
+        Ok((body, res))
     }
 }
