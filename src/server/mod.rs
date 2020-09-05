@@ -128,6 +128,7 @@ mod route;
 mod router;
 mod serv_handle;
 mod serv_req_ext;
+mod statik;
 
 #[cfg(feature = "tls")]
 mod tls_config;
@@ -136,7 +137,7 @@ use conn::Connection;
 use serv_handle::EndFut;
 
 pub use chain::Next;
-pub use handler::{serve_dir, Handler, StateHandler};
+pub use handler::{Handler, StateHandler};
 pub use middle::{Middleware, StateMiddleware};
 pub use reply::Reply;
 pub use resb_ext::ResponseBuilderExt;
@@ -144,6 +145,7 @@ pub use route::{Route, StateRoute};
 pub use router::Router;
 pub use serv_handle::ServerHandle;
 pub use serv_req_ext::ServerRequestExt;
+pub use statik::serve_dir;
 
 #[cfg(feature = "tls")]
 pub use tls_config::TlsConfig;
