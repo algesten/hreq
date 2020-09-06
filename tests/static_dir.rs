@@ -149,11 +149,62 @@ fn static_dir_index() -> Result<(), hreq::Error> {
     let res = http::Request::get(uri).call().block()?;
 
     assert_eq!(res.status(), 200);
+    assert_eq!(res.header("content-type"), Some("text/html; charset=UTF-8"));
 
     // let uri = format!("http://localhost:{}/my/special", addr.port());
     // let res = http::Request::get(uri).call().block()?;
 
     // assert_eq!(res.status(), 200);
+
+    Ok(())
+}
+
+#[test]
+fn static_dir_no_index() -> Result<(), hreq::Error> {
+    common::setup_logger();
+
+    let mut server = Server::new();
+    server
+        .at("/my/special/*path")
+        .get(hreq::server::Static::dir("tests/data").index_file(None));
+
+    let (handle, addr) = server.listen(0).block()?;
+
+    hreq::AsyncRuntime::spawn(async move {
+        handle.keep_alive().await;
+    });
+
+    let uri = format!("http://localhost:{}/my/special/", addr.port());
+    let res = http::Request::get(uri).call().block()?;
+
+    assert_eq!(res.status(), 404);
+
+    Ok(())
+}
+
+#[test]
+fn static_dir_other_index() -> Result<(), hreq::Error> {
+    common::setup_logger();
+
+    let mut server = Server::new();
+    server
+        .at("/my/special/*path")
+        .get(hreq::server::Static::dir("tests/data").index_file(Some("shiftjis.txt")));
+
+    let (handle, addr) = server.listen(0).block()?;
+
+    hreq::AsyncRuntime::spawn(async move {
+        handle.keep_alive().await;
+    });
+
+    let uri = format!("http://localhost:{}/my/special/", addr.port());
+    let res = http::Request::get(uri).call().block()?;
+
+    assert_eq!(res.status(), 200);
+    assert_eq!(
+        res.header("content-type"),
+        Some("text/plain; charset=Shift_JIS")
+    );
 
     Ok(())
 }
