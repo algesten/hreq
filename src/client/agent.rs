@@ -183,9 +183,7 @@ impl Agent {
 
     pub(crate) fn send_future<'a>(mut self, req: http::Request<Body>) -> ResponseFuture {
         let do_fut = async move { self.send(req).await };
-        ResponseFuture {
-            req: Box::new(do_fut),
-        }
+        ResponseFuture::new(do_fut)
     }
 
     /// Sends a request using this agent.
@@ -492,6 +490,14 @@ impl fmt::Debug for Agent {
 /// Instances should be `.await` or `.block()`.
 pub struct ResponseFuture {
     req: Box<dyn Future<Output = Result<http::Response<Body>, Error>>>,
+}
+
+impl ResponseFuture {
+    pub(crate) fn new(
+        t: impl Future<Output = Result<http::Response<Body>, Error>> + 'static,
+    ) -> Self {
+        ResponseFuture { req: Box::new(t) }
+    }
 }
 
 impl Future for ResponseFuture {

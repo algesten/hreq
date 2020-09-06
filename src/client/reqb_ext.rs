@@ -1,7 +1,7 @@
 //! Extension trait for `http::request::Builder`
 
-use super::req_ext::RequestExt;
 use crate::client::agent::ResponseFuture;
+use crate::client::req_ext::RequestExt;
 use crate::params::QueryParams;
 use crate::params::{AutoCharset, HReqParams};
 use crate::uri_ext::HostPort;
@@ -480,7 +480,9 @@ impl RequestBuilderExt for request::Builder {
     fn query(self, key: &str, value: &str) -> Self {
         let mut this = self;
         let qparams = get_or_insert(&mut this, QueryParams::new);
-        qparams.params.push((key.into(), value.into()));
+        if let Some(qparams) = qparams {
+            qparams.params.push((key.into(), value.into()));
+        }
         this
     }
 
@@ -573,8 +575,11 @@ impl RequestBuilderExt for request::Builder {
     where
         B: Into<Body> + Send,
     {
-        let req = self.with_body(body).expect("send with body");
-        req.send()
+        let req = self.with_body(body);
+        match req {
+            Ok(v) => v.send(),
+            Err(v) => ResponseFuture::new(async move { Err(v.into()) }),
+        }
     }
 
     fn call(self) -> ResponseFuture {
@@ -590,20 +595,25 @@ impl RequestBuilderExt for request::Builder {
     where
         B: Serialize + ?Sized + Send + Sync,
     {
-        let req = self.with_json(body).expect("send with json");
-        req.send()
+        let req = self.with_json(body);
+        match req {
+            Ok(v) => v.send(),
+            Err(v) => ResponseFuture::new(async move { Err(v.into()) }),
+        }
     }
 }
 
 fn get_or_insert<T: Send + Sync + 'static, F: FnOnce() -> T>(
     builder: &mut request::Builder,
     f: F,
-) -> &mut T {
-    let ext = builder.extensions_mut().expect("Unwrap extensions");
-    if ext.get::<T>().is_none() {
-        ext.insert(f());
+) -> Option<&mut T> {
+    if let Some(ext) = builder.extensions_mut() {
+        if ext.get::<T>().is_none() {
+            ext.insert(f());
+        }
+        return ext.get_mut::<T>();
     }
-    ext.get_mut::<T>().unwrap()
+    None
 }
 
 fn with_hreq_params<F: FnOnce(&mut HReqParams)>(
@@ -611,6 +621,8 @@ fn with_hreq_params<F: FnOnce(&mut HReqParams)>(
     f: F,
 ) -> request::Builder {
     let params = get_or_insert(&mut builder, HReqParams::new);
-    f(params);
+    if let Some(params) = params {
+        f(params);
+    }
     builder
 }
