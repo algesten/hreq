@@ -62,6 +62,14 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Peekable<S> {
         let this = self.get_mut();
         Pin::new(&mut this.stream).poll_write(cx, buf)
     }
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice],
+    ) -> Poll<Result<usize, io::Error>> {
+        let this = self.get_mut();
+        Pin::new(&mut this.stream).poll_write_vectored(cx, bufs)
+    }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         let this = self.get_mut();
         Pin::new(&mut this.stream).poll_flush(cx)

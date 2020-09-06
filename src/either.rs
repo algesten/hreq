@@ -49,6 +49,16 @@ impl<A: AsyncWrite + Unpin, B: AsyncWrite + Unpin> AsyncWrite for Either<A, B> {
             Either::B(b) => Pin::new(b).poll_write(cx, buf),
         }
     }
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+        bufs: &[io::IoSlice],
+    ) -> Poll<Result<usize, io::Error>> {
+        match self.get_mut() {
+            Either::A(a) => Pin::new(a).poll_write_vectored(cx, bufs),
+            Either::B(b) => Pin::new(b).poll_write_vectored(cx, bufs),
+        }
+    }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         match self.get_mut() {
             Either::A(a) => Pin::new(a).poll_flush(cx),

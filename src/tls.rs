@@ -287,6 +287,19 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncWrite for TlsStream<S, E> {
 
         Ok(amount).into()
     }
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+        bufs: &[io::IoSlice],
+    ) -> Poll<Result<usize, io::Error>> {
+        let this = self.get_mut();
+
+        ready!(this.poll_tls(cx, false))?;
+
+        let amount = this.tls.write_vectored(bufs)?;
+
+        Ok(amount).into()
+    }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         let this = self.get_mut();
 

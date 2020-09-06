@@ -42,6 +42,15 @@ impl<Z: TokioAsyncWrite + Unpin> AsyncWrite for FromAdapter<Z> {
     ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut self.get_mut().adapted).poll_write(cx, buf)
     }
+    // TokioAsyncWrite doesn't have a poll_write_vectored. This will affect
+    // write performance when using a tokio runtime. :(
+    // fn poll_write_vectored(
+    //     self: Pin<&mut Self>,
+    //     cx: &mut Context,
+    //     bufs: &[io::IoSlice],
+    // ) -> Poll<Result<usize, io::Error>> {
+    //     Pin::new(&mut self.get_mut().adapted).poll_write_vectored(cx, bufs)
+    // }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.get_mut().adapted).poll_flush(cx)
     }
