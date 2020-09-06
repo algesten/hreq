@@ -19,15 +19,43 @@ use std::time::SystemTime;
 
 /// Serve files from a directory.
 ///
+/// * Supports `HEAD` requests.
+/// * Caching using [`if-modified-since`] and [`must-revalidate`].
+/// * Maps file extension to `content-type` using [mime-guess].
+/// * Guesses character encoding of `text/*` mime types using [chardetng].
+/// * Supports [range requests].
+///
+/// # Example
+///
+/// A request for `http://localhost:3000/static/foo.html` would attempt to read a file
+/// from disk `/www/static/foo.html`.
+///
+/// ```no_run
+/// use hreq::prelude::*;
+/// use hreq::server::serve_dir;
+///
+/// async fn start_server() {
+///    server.at("/static/*file").all(serve_dir("/www/static"));
+///
+///    let (handle, addr) = server.listen(3000).await.unwrap();
+///
+///    handle.keep_alive().await;
+/// }
+/// ```
+///
 /// Must be used with one path parameter `/path/:name`. Use a rest parameter `/path/*name`, to
 /// files also from subdirectories.
-///
 ///
 /// Cannot serve files from parent paths. I.e. `/path/../foo.txt`.
 ///
 /// Panics if the path served can not be [`std::fs::canonicalize`].
 ///
 /// [`std::fs::canonicalize`]: https://doc.rust-lang.org/std/fs/fn.canonicalize.html
+/// [`if-modified-since`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Conditional_requests
+/// [`must-revalidate`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+/// [mime-guess]: https://crates.io/crates/mime_guess
+/// [chardetng]: https://crates.io/crates/chardetng
+/// [range requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
 pub fn serve_dir(path: impl AsRef<Path>) -> impl Handler {
     let path = path.as_ref();
 

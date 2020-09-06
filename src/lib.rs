@@ -288,15 +288,15 @@
 //!
 //! See the [`server module doc`] for more details.
 //!
-//! ```ignore
+//! ```no_run
 //! use hreq::prelude::*;
 //!
-//! fn main() {
+//! async fn start_server() {
 //!     let mut server = Server::new();
 //!     server.at("/hello/:name").get(hello_there);
-//!     let (shut, addr) = server.listen(0).block().expect("Failed to listen");
+//!     let (shut, addr) = server.listen(0).await.expect("Failed to listen");
 //!     println!("Listening to: {}", addr);
-//!     shut.shutdown().block();
+//!     shut.shutdown().await;
 //! }
 //!
 //! async fn hello_there(req: http::Request<Body>) -> String {
