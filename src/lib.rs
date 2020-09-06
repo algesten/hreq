@@ -289,7 +289,11 @@
 //! See the [`server module doc`] for more details.
 //!
 //! ```no_run
+//! // ignore this example if not feature server
+//! #[cfg(feature = "server")] {
+//!
 //! use hreq::prelude::*;
+//!
 //!
 //! async fn start_server() {
 //!     let mut server = Server::new();
@@ -302,6 +306,8 @@
 //! async fn hello_there(req: http::Request<Body>) -> String {
 //!     let name = req.path_param("name").unwrap();
 //!     format!("Hello there {}!\n", name)
+//! }
+//!
 //! }
 //! ```
 //!
