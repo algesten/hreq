@@ -31,7 +31,7 @@ pub enum ProtocolImpl {
 }
 
 impl fmt::Display for ProtocolImpl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ProtocolImpl::Http1(_) => write!(f, "Http1"),
             ProtocolImpl::Http2(_) => write!(f, "Http2"),
@@ -277,7 +277,7 @@ enum ResponseFuture {
 
 impl Future for ResponseFuture {
     type Output = Result<(http::response::Parts, Body), Error>;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.get_mut();
         match this {
             ResponseFuture::H1(f) => {
@@ -305,7 +305,7 @@ where
     F: Future + Unpin,
 {
     type Output = TryOnce<F>;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.get_mut();
         match Pin::new(&mut this.0).poll(cx) {
             Poll::Pending => TryOnce::Pending,

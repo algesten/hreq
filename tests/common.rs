@@ -35,7 +35,7 @@ impl io::Read for DataGenerator {
 impl AsyncRead for DataGenerator {
     fn poll_read(
         self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        _cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();

@@ -15,7 +15,7 @@ pub(crate) enum Either<A, B> {
 impl<A: AsyncRead + Unpin, B: AsyncRead + Unpin> AsyncRead for Either<A, B> {
     fn poll_read(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         match self.get_mut() {
@@ -28,7 +28,7 @@ impl<A: AsyncRead + Unpin, B: AsyncRead + Unpin> AsyncRead for Either<A, B> {
 impl<A: AsyncSeek + Unpin, B: AsyncSeek + Unpin> AsyncSeek for Either<A, B> {
     fn poll_seek(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         pos: io::SeekFrom,
     ) -> Poll<io::Result<u64>> {
         match self.get_mut() {
@@ -41,7 +41,7 @@ impl<A: AsyncSeek + Unpin, B: AsyncSeek + Unpin> AsyncSeek for Either<A, B> {
 impl<A: AsyncWrite + Unpin, B: AsyncWrite + Unpin> AsyncWrite for Either<A, B> {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         match self.get_mut() {
@@ -59,13 +59,13 @@ impl<A: AsyncWrite + Unpin, B: AsyncWrite + Unpin> AsyncWrite for Either<A, B> {
             Either::B(b) => Pin::new(b).poll_write_vectored(cx, bufs),
         }
     }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         match self.get_mut() {
             Either::A(a) => Pin::new(a).poll_flush(cx),
             Either::B(b) => Pin::new(b).poll_flush(cx),
         }
     }
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         match self.get_mut() {
             Either::A(a) => Pin::new(a).poll_close(cx),
             Either::B(b) => Pin::new(b).poll_close(cx),

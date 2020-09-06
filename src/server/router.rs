@@ -164,7 +164,7 @@ impl<State> Endpoint<State> {
 }
 
 impl<State> fmt::Debug for Endpoint<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "Endpoint {{ method: {:?}, path: {:?}, chain: {:?} }}",
@@ -174,7 +174,7 @@ impl<State> fmt::Debug for Endpoint<State> {
 }
 
 impl<State> fmt::Debug for Router<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Router")
     }
 }

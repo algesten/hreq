@@ -177,7 +177,7 @@ impl<State> Into<Chain<State>> for End<State> {
 }
 
 impl<State> fmt::Debug for Mid<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Mid::Middleware(_) => write!(f, "Middleware"),
             Mid::StateMiddleware(_) => write!(f, "StateMiddleware"),
@@ -186,7 +186,7 @@ impl<State> fmt::Debug for Mid<State> {
 }
 
 impl<State> fmt::Debug for MidWrap<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "MidWrap {{ mid: {:?}, next: {:?} }}",
@@ -196,13 +196,13 @@ impl<State> fmt::Debug for MidWrap<State> {
 }
 
 impl fmt::Debug for Next {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Next")
     }
 }
 
 impl<State> fmt::Debug for End<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             End::Handler(_) => write!(f, "Handler"),
             End::StateHandler(_) => write!(f, "StateHandler"),
@@ -212,7 +212,7 @@ impl<State> fmt::Debug for End<State> {
 }
 
 impl<State> fmt::Debug for Chain<State> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Chain::MidWrap(m) => write!(f, "{:?}", m),
             Chain::End(e) => write!(f, "{:?}", e),

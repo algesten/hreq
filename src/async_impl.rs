@@ -493,7 +493,7 @@ struct FakeStream;
 impl AsyncRead for FakeStream {
     fn poll_read(
         self: Pin<&mut Self>,
-        _: &mut Context<'_>,
+        _: &mut Context,
         _: &mut [u8],
     ) -> Poll<futures_io::Result<usize>> {
         unreachable!()
@@ -502,25 +502,21 @@ impl AsyncRead for FakeStream {
 impl AsyncWrite for FakeStream {
     fn poll_write(
         self: Pin<&mut Self>,
-        _: &mut Context<'_>,
+        _: &mut Context,
         _: &[u8],
     ) -> Poll<futures_io::Result<usize>> {
         unreachable!()
     }
-    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<futures_io::Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context) -> Poll<futures_io::Result<()>> {
         unreachable!()
     }
-    fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<futures_io::Result<()>> {
+    fn poll_close(self: Pin<&mut Self>, _: &mut Context) -> Poll<futures_io::Result<()>> {
         unreachable!()
     }
 }
 
 impl AsyncSeek for FakeStream {
-    fn poll_seek(
-        self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-        _: io::SeekFrom,
-    ) -> Poll<io::Result<u64>> {
+    fn poll_seek(self: Pin<&mut Self>, _: &mut Context, _: io::SeekFrom) -> Poll<io::Result<u64>> {
         unreachable!()
     }
 }

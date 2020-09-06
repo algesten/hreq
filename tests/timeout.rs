@@ -13,7 +13,7 @@ struct NeverRead;
 impl AsyncRead for NeverRead {
     fn poll_read(
         self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        _cx: &mut Context,
         _buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         Poll::Pending

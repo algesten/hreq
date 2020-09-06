@@ -21,7 +21,7 @@ impl MethodExt for http::Method {
 
 pub(crate) trait UriExt {
     /// host:port
-    fn host_port(&self) -> Result<HostPort<'_>, Error>;
+    fn host_port(&self) -> Result<HostPort, Error>;
     /// Parse a uri relative to some other base uri. We can resolve
     /// a uri containing only a path relative to some uri having a host.
     fn parse_relative(&self, from: &str) -> Result<http::Uri, Error>;
@@ -32,7 +32,7 @@ pub(crate) trait UriExt {
 }
 
 impl UriExt for http::Uri {
-    fn host_port(&self) -> Result<HostPort<'_>, Error> {
+    fn host_port(&self) -> Result<HostPort, Error> {
         HostPort::from_uri(self)
     }
     fn parse_relative(&self, from: &str) -> Result<http::Uri, Error> {
@@ -184,7 +184,7 @@ impl<'a> HostPort<'a> {
 }
 
 impl<'a> fmt::Display for HostPort<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             HostPort::Shared { host, port, .. } => write!(f, "{}:{}", host, port),
             HostPort::Owned { host, port, .. } => write!(f, "{}:{}", host, port),

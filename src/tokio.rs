@@ -27,7 +27,7 @@ pub(crate) struct FromAdapter<Z> {
 impl<Z: TokioAsyncRead + Unpin> AsyncRead for FromAdapter<Z> {
     fn poll_read(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         Pin::new(&mut self.get_mut().adapted).poll_read(cx, buf)
@@ -37,7 +37,7 @@ impl<Z: TokioAsyncRead + Unpin> AsyncRead for FromAdapter<Z> {
 impl<Z: TokioAsyncWrite + Unpin> AsyncWrite for FromAdapter<Z> {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut self.get_mut().adapted).poll_write(cx, buf)
@@ -51,10 +51,10 @@ impl<Z: TokioAsyncWrite + Unpin> AsyncWrite for FromAdapter<Z> {
     // ) -> Poll<Result<usize, io::Error>> {
     //     Pin::new(&mut self.get_mut().adapted).poll_write_vectored(cx, bufs)
     // }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.get_mut().adapted).poll_flush(cx)
     }
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.get_mut().adapted).poll_shutdown(cx)
     }
 }
@@ -65,7 +65,7 @@ where
 {
     fn poll_seek(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         pos: io::SeekFrom,
     ) -> Poll<io::Result<u64>> {
         let this = self.get_mut();

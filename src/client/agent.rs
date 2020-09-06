@@ -480,7 +480,7 @@ fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
 }
 
 impl fmt::Debug for Agent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Agent")
     }
 }

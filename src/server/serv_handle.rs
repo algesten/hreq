@@ -57,14 +57,14 @@ impl std::future::Future for NoFuture {
     type Output = ();
     fn poll(
         self: std::pin::Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
+        _cx: &mut std::task::Context,
     ) -> std::task::Poll<Self::Output> {
         std::task::Poll::Pending
     }
 }
 
 impl fmt::Debug for ServerHandle {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ServerHandle")
     }
 }

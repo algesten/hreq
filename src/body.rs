@@ -981,7 +981,7 @@ impl AsyncRead for BodyCodec {
 }
 
 impl fmt::Debug for BodyCodec {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             BodyCodec::Deferred(_) => write!(f, "defer"),
             BodyCodec::Pass(_) => write!(f, "pass"),
@@ -994,13 +994,13 @@ impl fmt::Debug for BodyCodec {
 }
 
 impl fmt::Debug for BodyReader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.imp)
     }
 }
 
 impl fmt::Debug for BodyImpl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             BodyImpl::RequestEmpty => write!(f, "empty"),
             BodyImpl::RequestAsyncRead(_) => write!(f, "async"),
@@ -1012,7 +1012,7 @@ impl fmt::Debug for BodyImpl {
 }
 
 impl fmt::Debug for Body {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Body {{ reader: ")?;
         match self.codec.get_ref().reader_ref() {
             Some(v) => write!(f, "{:?}", v),

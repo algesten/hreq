@@ -34,7 +34,7 @@ impl<S: AsyncRead + Unpin> Peekable<S> {
 impl<S: AsyncRead + Unpin> AsyncRead for Peekable<S> {
     fn poll_read(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
@@ -56,7 +56,7 @@ impl<S: AsyncRead + Unpin> AsyncRead for Peekable<S> {
 impl<S: AsyncWrite + Unpin> AsyncWrite for Peekable<S> {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
@@ -64,17 +64,17 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Peekable<S> {
     }
     fn poll_write_vectored(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         bufs: &[io::IoSlice],
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
         Pin::new(&mut this.stream).poll_write_vectored(cx, bufs)
     }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         let this = self.get_mut();
         Pin::new(&mut this.stream).poll_flush(cx)
     }
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         let this = self.get_mut();
         Pin::new(&mut this.stream).poll_close(cx)
     }
@@ -83,7 +83,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Peekable<S> {
 impl<S: AsyncSeek + Unpin> AsyncSeek for Peekable<S> {
     fn poll_seek(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         pos: io::SeekFrom,
     ) -> Poll<io::Result<u64>> {
         let this = self.get_mut();

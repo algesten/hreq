@@ -257,7 +257,7 @@ impl<S: Stream, E: Session + Unpin + 'static> TlsStream<S, E> {
 impl<S: Stream, E: Session + Unpin + 'static> AsyncRead for TlsStream<S, E> {
     fn poll_read(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
@@ -276,7 +276,7 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncRead for TlsStream<S, E> {
 impl<S: Stream, E: Session + Unpin + 'static> AsyncWrite for TlsStream<S, E> {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
@@ -300,7 +300,7 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncWrite for TlsStream<S, E> {
 
         Ok(amount).into()
     }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         let this = self.get_mut();
 
         ready!(this.poll_tls(cx, false))?;
@@ -311,7 +311,7 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncWrite for TlsStream<S, E> {
 
         Ok(()).into()
     }
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         let this = self.get_mut();
 
         ready!(this.poll_tls(cx, false))?;
