@@ -147,7 +147,7 @@ pub use route::{Route, StateRoute};
 pub use router::Router;
 pub use serv_handle::ServerHandle;
 pub use serv_req_ext::ServerRequestExt;
-pub use statik::serve_dir;
+pub use statik::Static;
 
 #[cfg(feature = "tls")]
 pub use tls_config::TlsConfig;

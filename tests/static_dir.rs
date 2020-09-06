@@ -2,13 +2,13 @@ use hreq::prelude::*;
 mod common;
 
 #[test]
-fn server_serve_dir_ctype() -> Result<(), hreq::Error> {
+fn static_dir_ctype() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/:file")
-        .get(hreq::server::serve_dir("tests/data"));
+        .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 
@@ -62,13 +62,13 @@ fn server_serve_dir_ctype() -> Result<(), hreq::Error> {
 }
 
 #[test]
-fn server_serve_dir_subdir() -> Result<(), hreq::Error> {
+fn static_dir_subdir() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/*path")
-        .get(hreq::server::serve_dir("tests/data"));
+        .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 
@@ -92,13 +92,13 @@ fn server_serve_dir_subdir() -> Result<(), hreq::Error> {
 }
 
 #[test]
-fn server_serve_dir_404() -> Result<(), hreq::Error> {
+fn static_dir_404() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/*path")
-        .get(hreq::server::serve_dir("tests/data"));
+        .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 
@@ -131,13 +131,13 @@ fn server_serve_dir_404() -> Result<(), hreq::Error> {
 }
 
 #[test]
-fn server_serve_dir_index() -> Result<(), hreq::Error> {
+fn static_dir_index() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/*path")
-        .get(hreq::server::serve_dir("tests/data"));
+        .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 
@@ -159,13 +159,13 @@ fn server_serve_dir_index() -> Result<(), hreq::Error> {
 }
 
 #[test]
-fn server_serve_dir_last_modified() -> Result<(), hreq::Error> {
+fn static_dir_last_modified() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/*path")
-        .get(hreq::server::serve_dir("tests/data"));
+        .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 
@@ -219,13 +219,13 @@ fn server_serve_dir_last_modified() -> Result<(), hreq::Error> {
 }
 
 #[test]
-fn server_serve_dir_head() -> Result<(), hreq::Error> {
+fn static_dir_head() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/*path")
-        .all(hreq::server::serve_dir("tests/data"));
+        .all(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 
@@ -254,13 +254,13 @@ fn server_serve_dir_head() -> Result<(), hreq::Error> {
 }
 
 #[test]
-fn server_serve_dir_range() -> Result<(), hreq::Error> {
+fn static_dir_range() -> Result<(), hreq::Error> {
     common::setup_logger();
 
     let mut server = Server::new();
     server
         .at("/my/special/*path")
-        .get(hreq::server::serve_dir("tests/data"));
+        .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
 

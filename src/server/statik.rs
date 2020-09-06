@@ -18,9 +18,10 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::SystemTime;
 
-/// Serve files from a directory.
+/// Serve static files.
 ///
 /// * Supports `HEAD` requests.
+/// * Directory default "index.html" (on windows "index.htm").
 /// * Caching using [`if-modified-since`] and [`must-revalidate`].
 /// * Maps file extension to `content-type` using [mime-guess].
 /// * Guesses character encoding of `text/*` mime types using [chardetng].
@@ -33,10 +34,12 @@ use std::time::SystemTime;
 ///
 /// ```no_run
 /// use hreq::prelude::*;
-/// use hreq::server::serve_dir;
+/// use hreq::server::Static;
 ///
 /// async fn start_server() {
-///    server.at("/static/*file").all(serve_dir("/www/static"));
+///    let mut server = Server::new();
+///
+///    server.at("/static/*file").all(Static::dir("/www/static"));
 ///
 ///    let (handle, addr) = server.listen(3000).await.unwrap();
 ///
@@ -44,53 +47,227 @@ use std::time::SystemTime;
 /// }
 /// ```
 ///
-/// Must be used with one path parameter `/path/:name`. Use a rest parameter `/path/*name`, to
-/// files also from subdirectories.
-///
-/// Cannot serve files from parent paths. I.e. `/path/../foo.txt`.
-///
-/// Panics if the path served can not be [`std::fs::canonicalize`].
-///
-/// [`std::fs::canonicalize`]: https://doc.rust-lang.org/std/fs/fn.canonicalize.html
 /// [`if-modified-since`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Conditional_requests
 /// [`must-revalidate`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
 /// [mime-guess]: https://crates.io/crates/mime_guess
 /// [chardetng]: https://crates.io/crates/chardetng
 /// [range requests]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
-pub fn serve_dir(path: impl AsRef<Path>) -> impl Handler {
-    let path = path.as_ref();
+#[derive(Debug)]
+pub struct Static {
+    root: PathBuf,
+    use_path_param: bool,
+    index_file: Option<String>,
+}
 
-    match path.canonicalize() {
-        Err(e) => {
-            panic!("Failed to canonicalize path ({:?}): {:?}", path, e);
+impl Static {
+    /// Creates a handler that serves files from a directory.
+    ///
+    /// * Must be used with a path parameter `/path/*name`.
+    /// * Cannot serve files from parent paths. I.e. `/path/../foo.txt`.
+    /// * Path is either absolute, or made absolute by using [`current_dir`] upon creation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    /// use hreq::server::Static;
+    ///
+    /// async fn start_server() {
+    ///    let mut server = Server::new();
+    ///
+    ///    server.at("/static/*file").all(Static::dir("/www/static"));
+    ///
+    ///    let (handle, addr) = server.listen(3000).await.unwrap();
+    ///
+    ///    handle.keep_alive().await;
+    /// }
+    /// ```
+    ///
+    /// [`current_dir`]: https://doc.rust-lang.org/std/env/fn.current_dir.html
+    pub fn dir(path: impl AsRef<Path>) -> Self {
+        Static::new(path, true)
+    }
+
+    /// Creates a handler that serves the same file for every request.
+    ///
+    /// * Path is either absolute, or made absolute by using [`current_dir`] upon creation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    /// use hreq::server::Static;
+    ///
+    /// async fn start_server() {
+    ///    let mut server = Server::new();
+    ///
+    ///    server.at("/*any").all(Static::file("/www/single-page-app.html"));
+    ///
+    ///    let (handle, addr) = server.listen(3000).await.unwrap();
+    ///
+    ///    handle.keep_alive().await;
+    /// }
+    /// ```
+    ///
+    /// [`current_dir`]: https://doc.rust-lang.org/std/env/fn.current_dir.html
+    pub fn file(path: impl AsRef<Path>) -> Self {
+        Static::new(path, false)
+    }
+
+    /// Send a file as part of a handler.
+    ///
+    /// Inspired by express js [`res.sendFile`].
+    ///
+    /// ```no_run
+    /// use hreq::prelude::*;
+    /// use hreq::server::Static;
+    ///
+    /// async fn start_server() {
+    ///    let mut server = Server::new();
+    ///
+    ///    server.at("/do/something").get(do_something);
+    ///
+    ///    let (handle, addr) = server.listen(3000).await.unwrap();
+    ///
+    ///    handle.keep_alive().await;
+    /// }
+    ///
+    /// async fn do_something(
+    ///   req: http::Request<Body>
+    /// ) -> Result<http::Response<Body>, hreq::Error> {
+    ///   // do stuff with req.
+    ///
+    ///   Static::send_file(&req, "/www/my-file.txt").await
+    /// }
+    /// ```
+    ///
+    /// [`res.sendFile`]: http://expressjs.com/en/api.html#res.sendFile
+    pub async fn send_file(
+        req: &http::Request<Body>,
+        path: impl AsRef<Path>,
+    ) -> Result<http::Response<Body>, Error> {
+        let st = Static::new("", false);
+        st.handle(req, Some(path.as_ref())).await
+    }
+
+    fn new(path: impl AsRef<Path>, use_path_param: bool) -> Self {
+        let path = path.as_ref();
+
+        let root = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap().join(path)
+        };
+
+        let index_file = Some(
+            if cfg!(target_os = "windows") {
+                "index.htm"
+            } else {
+                "index.html"
+            }
+            .to_string(),
+        );
+
+        Static {
+            root,
+            use_path_param,
+            index_file,
         }
-        Ok(v) => DirHandler(v),
+    }
+
+    /// Change directory index file.
+    ///
+    /// This defaults to "index.html" and on windows "index.htm".
+    ///
+    /// Set `None` to turn off index files (and respond with 404 instead).
+    pub fn index_file(mut self, file: Option<&str>) -> Self {
+        self.index_file = file.map(|v| v.to_string());
+        self
+    }
+
+    fn resolve_path(&self, path: Option<&Path>) -> io::Result<PathBuf> {
+        // Use the segment from the /*name appended to the dir we use.
+        // This could be relative such as `"/path/to/serve"` + `"blah/../foo.txt"`
+        let mut root = self.root.clone();
+
+        // Canonicalized form of root. This must exist,
+        let root_canon = root.canonicalize()?;
+
+        if let Some(path) = path {
+            root.push(&path);
+        }
+
+        // By canonicalizing we remove any `..`. This errors if the file doesn't exist.
+        let absolute = root.canonicalize()?;
+
+        // This is a security check that the resolved doesn't go to a parent dir/file.
+        // "/path/to/serve" + "../../../etc/passwd". It works because self.0 is canonicalized.
+        if !absolute.starts_with(&root_canon) {
+            debug!("Path not under base path: {:?}", path);
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Base path"));
+        }
+
+        Ok(absolute)
+    }
+
+    async fn handle(
+        &self,
+        req: &Request<Body>,
+        path: Option<&Path>,
+    ) -> Result<http::Response<Body>, Error> {
+        // only accept HEAD or GET, all other we error on.
+        if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
+            return Ok(err(http::StatusCode::METHOD_NOT_ALLOWED, "Use GET or HEAD"));
+        }
+
+        let mut absolute = match self.resolve_path(path) {
+            Err(e) => {
+                if e.kind() == io::ErrorKind::NotFound {
+                    return Ok(err(StatusCode::NOT_FOUND, "Not found"));
+                } else {
+                    warn!("Failed to canonicalize ({:?}): {:?}", path, e);
+                    return Ok(err(StatusCode::BAD_REQUEST, "Bad request"));
+                }
+            }
+            Ok(v) => v,
+        };
+
+        if absolute.is_dir() {
+            if let Some(index) = &self.index_file {
+                absolute.push(index);
+            } else {
+                return Ok(err(StatusCode::NOT_FOUND, "Not found"));
+            }
+        }
+
+        let d = Dispatch::new(absolute, req);
+
+        Ok(d.into_response().await?)
     }
 }
 
-struct DirHandler(PathBuf);
-
-impl Handler for DirHandler {
+impl Handler for Static {
     fn call<'a>(&'a self, req: Request<Body>) -> Pin<Box<dyn Future<Output = Reply> + Send + 'a>> {
-        let params = req.path_params();
+        if self.use_path_param {
+            let params = req.path_params();
 
-        if params.is_empty() {
-            let msg = "serve_dir() must be used with a path param. Example: /dir/*file";
+            if params.is_empty() || params.len() > 1 {
+                let msg = "serve_dir() must be used with none path param. Example: /dir/*file";
 
-            warn!("{}", msg);
+                warn!("{}", msg);
 
-            Box::pin(async move { err(StatusCode::INTERNAL_SERVER_ERROR, msg).into() })
-        } else if params.len() > 1 {
-            let msg = "serve_dir() should be used with one path param. Example: /dir/*file";
+                Box::pin(async move { err(StatusCode::INTERNAL_SERVER_ERROR, msg).into() })
+            } else {
+                let path: PathBuf = params[0].1.to_owned().into();
 
-            warn!("{}", msg);
-
-            Box::pin(async move { err(StatusCode::INTERNAL_SERVER_ERROR, msg).into() })
+                Box::pin(async move {
+                    let ret = self.handle(&req, Some(&path)).await;
+                    ret.into()
+                })
+            }
         } else {
-            let to_serve = params[0].1.to_owned();
-
             Box::pin(async move {
-                let ret = self.handle(to_serve, &req).await;
+                let ret = self.handle(&req, None).await;
                 ret.into()
             })
         }
@@ -103,54 +280,6 @@ fn err(status: http::StatusCode, msg: &str) -> http::Response<Body> {
         .body(msg.into())
         .unwrap()
 }
-
-impl DirHandler {
-    async fn handle(
-        &self,
-        to_serve: String,
-        req: &Request<Body>,
-    ) -> Result<http::Response<Body>, Error> {
-        // only accept HEAD or GET, all other we error on.
-        if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
-            return Ok(err(http::StatusCode::METHOD_NOT_ALLOWED, "Use GET or HEAD"));
-        }
-
-        // Use the segment from the /*name appended to the dir we use.
-        // This could be relative such as `"/path/to/serve"` + `"blah/../foo.txt"`
-        let mut relative = self.0.clone();
-        relative.push(&to_serve);
-
-        // By canonicalizing we remove any `..`.
-        let mut absolute = match relative.canonicalize() {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::NotFound {
-                    return Ok(err(StatusCode::NOT_FOUND, "Not found"));
-                } else {
-                    warn!("Failed to canonicalize ({}): {:?}", to_serve, e);
-                    return Ok(err(StatusCode::BAD_REQUEST, "Bad request"));
-                }
-            }
-            Ok(v) => v,
-        };
-
-        // This is a security check that the resolved doesn't go to a parent dir/file.
-        // "/path/to/serve" + "../../../etc/passwd". It works because self.0 is canonicalized.
-        if !absolute.starts_with(&self.0) {
-            debug!("Path not under base path: {}", to_serve);
-            return Ok(err(StatusCode::NOT_FOUND, "Bad path"));
-        }
-
-        // TODO configurable index files.
-        if absolute.is_dir() {
-            absolute.push("index.html");
-        }
-
-        let d = Dispatch::new(absolute, req);
-
-        Ok(d.into_response().await?)
-    }
-}
-
 struct Dispatch {
     file: PathBuf,
     if_modified_since: Option<SystemTime>,
