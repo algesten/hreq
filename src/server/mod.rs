@@ -49,6 +49,49 @@
 //! }
 //! ```
 //!
+//! # Path parameters
+//!
+//! hreq does parsing of path parameters as part of routing.
+//!
+//! 1. `/literal` matches exactly.
+//! 1. `/:param_name` matches a single path segment delimited by `/` and binds `param_name` parameter.
+//! 2. `/*rest_name` matches _the rest of the path_ and binds `rest_name` parameter.
+//!
+//! The bound parameters are available using [`path_param()`].
+//!
+//! ## Examples
+//!
+//! * `server.at("/user")` matches the path `/user` without resulting in a path parameter.
+//! * `server.at("/user/:userId")` matches `/user/abc123` with path parameter `userId` set to `abc123`.
+//! * `server.at("/user/:userId")` does not math `/user/abc123/hello`.
+//! * `server.at("/user/:userId/*whatever")` matches `/user/abc123/hello` with
+//!    path parameter `userId` set to `abc123` and `whatever` set to `hello`.
+//!
+//! ```
+//! use hreq::prelude::*;
+//! use hreq::server::Next;
+//!
+//! async fn start_server() {
+//!    let mut server = Server::new();
+//!
+//!    server.at("/hello/:name/*the_rest").get(hello_there);
+//!
+//!    // Listen without TLS
+//!    let (handle, addr) = server.listen(3000).await.unwrap();
+//!
+//!    println!("Server listening to: {}", addr);
+//!
+//!    handle.keep_alive().await;
+//! }
+//!
+//! async fn hello_there(req: http::Request<Body>) -> String {
+//!    println!("All params {:?}", req.path_params()); // prints ["name", "the_rest"]
+//!    format!("Hello {}: {}",
+//!        req.path_param("name").unwrap(),
+//!        req.path_param("the_rest").unwrap())
+//! }
+//! ```
+//!
 //! # State
 //!
 //! Many servers needs to work over some shared mutable state to function.
@@ -103,6 +146,7 @@
 //! [state handling]: struct.Route.html#method.with_state
 //! [`Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
 //! [`Clone`]: https://doc.rust-lang.org/std/clone/trait.Clone.html
+//! [`path_param()`]: trait.ServerRequestExt.html#tymethod.path_param
 
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;

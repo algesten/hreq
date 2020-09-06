@@ -345,7 +345,7 @@
 //! [`charset_encode_source`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_encode_source
 //! [`charset_decode_target`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_decode_target
 //! [serde]: https://crates.io/crates/serde
-//! [`server module doc`]: server/index.html
+//! [`server module doc`]: https://docs.rs/hreq/latest/hreq/server/index.html
 #[macro_use]
 extern crate log;
 
