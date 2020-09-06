@@ -1,8 +1,8 @@
 use super::Reply;
 use crate::head_ext::HeaderMapExt;
-use crate::limit::ContentLengthRead;
-use crate::peek::Peekable;
 use crate::server::handler::Handler;
+use crate::server::limit::ContentLengthRead;
+use crate::server::peek::Peekable;
 use crate::server::{ResponseBuilderExt, ServerRequestExt};
 use crate::AsyncReadSeek;
 use crate::AsyncRuntime;

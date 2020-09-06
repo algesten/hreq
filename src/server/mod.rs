@@ -106,12 +106,12 @@
 
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;
-use crate::peek::Peekable;
 use crate::proto::Protocol;
 use crate::AsyncRuntime;
 use crate::Body;
 use crate::Error;
 use crate::Stream;
+use peek::Peekable;
 use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -120,8 +120,10 @@ use std::time::Duration;
 mod chain;
 mod conn;
 mod handler;
+mod limit;
 mod middle;
 mod path;
+mod peek;
 mod reply;
 mod resb_ext;
 mod route;
