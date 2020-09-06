@@ -10,6 +10,7 @@ use crate::Body;
 use crate::Error;
 use futures_util::io::AsyncSeekExt;
 use http::Request;
+use http::StatusCode;
 use httpdate::{fmt_http_date, parse_http_date};
 use std::future::Future;
 use std::io;
@@ -78,13 +79,13 @@ impl Handler for DirHandler {
 
             warn!("{}", msg);
 
-            Box::pin(async move { err(500, msg).into() })
+            Box::pin(async move { err(StatusCode::INTERNAL_SERVER_ERROR, msg).into() })
         } else if params.len() > 1 {
             let msg = "serve_dir() should be used with one path param. Example: /dir/*file";
 
             warn!("{}", msg);
 
-            Box::pin(async move { err(500, msg).into() })
+            Box::pin(async move { err(StatusCode::INTERNAL_SERVER_ERROR, msg).into() })
         } else {
             let to_serve = params[0].1.to_owned();
 
@@ -96,7 +97,7 @@ impl Handler for DirHandler {
     }
 }
 
-fn err(status: u16, msg: &str) -> http::Response<Body> {
+fn err(status: http::StatusCode, msg: &str) -> http::Response<Body> {
     http::Response::builder()
         .status(status)
         .body(msg.into())
@@ -109,6 +110,11 @@ impl DirHandler {
         to_serve: String,
         req: &Request<Body>,
     ) -> Result<http::Response<Body>, Error> {
+        // only accept HEAD or GET, all other we error on.
+        if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
+            return Ok(err(http::StatusCode::METHOD_NOT_ALLOWED, "Use GET or HEAD"));
+        }
+
         // Use the segment from the /*name appended to the dir we use.
         // This could be relative such as `"/path/to/serve"` + `"blah/../foo.txt"`
         let mut relative = self.0.clone();
@@ -118,10 +124,10 @@ impl DirHandler {
         let mut absolute = match relative.canonicalize() {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
-                    return Ok(err(404, "Not found"));
+                    return Ok(err(StatusCode::NOT_FOUND, "Not found"));
                 } else {
                     warn!("Failed to canonicalize ({}): {:?}", to_serve, e);
-                    return Ok(err(400, "Bad request"));
+                    return Ok(err(StatusCode::BAD_REQUEST, "Bad request"));
                 }
             }
             Ok(v) => v,
@@ -131,7 +137,7 @@ impl DirHandler {
         // "/path/to/serve" + "../../../etc/passwd". It works because self.0 is canonicalized.
         if !absolute.starts_with(&self.0) {
             debug!("Path not under base path: {}", to_serve);
-            return Ok(err(404, "Bad path"));
+            return Ok(err(StatusCode::NOT_FOUND, "Bad path"));
         }
 
         // TODO configurable index files.
@@ -202,8 +208,10 @@ impl Dispatch {
         match self.into_response_io().await {
             Ok(v) => Ok(v),
             Err(e) => match e.kind() {
-                io::ErrorKind::NotFound => Ok(err(404, "File not found")),
-                io::ErrorKind::PermissionDenied => Ok(err(403, "File permission denied")),
+                io::ErrorKind::NotFound => Ok(err(StatusCode::NOT_FOUND, "File not found")),
+                io::ErrorKind::PermissionDenied => {
+                    Ok(err(StatusCode::FORBIDDEN, "File permission denied"))
+                }
                 _ => Err(e.into()),
             },
         }
