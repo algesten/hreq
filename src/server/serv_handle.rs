@@ -3,23 +3,25 @@ use futures_util::select;
 use std::fmt;
 use std::future::Future;
 
+use hreq_h1::mpsc::{Receiver, Sender};
+
 /// Handle to a running server.
 ///
 /// The server functions as long as this handle is not dropped.
 pub struct ServerHandle {
-    tx: async_channel::Sender<()>,
+    tx: Sender<()>,
 }
 
 impl ServerHandle {
     pub(crate) async fn new() -> (Self, EndFut) {
-        let (tx, rx) = async_channel::bounded(1);
+        let (tx, rx) = Receiver::new(1);
 
         (ServerHandle { tx }, EndFut { rx })
     }
 
     /// Signal to the server to close down. Stop listening to the port and exit.
     pub async fn shutdown(self) {
-        self.tx.send(()).await.ok();
+        self.tx.send(());
     }
 
     /// Await this to keep the server alive forever. Will never return.
@@ -31,7 +33,7 @@ impl ServerHandle {
 
 #[derive(Clone)]
 pub(crate) struct EndFut {
-    rx: async_channel::Receiver<()>,
+    rx: Receiver<()>,
 }
 
 impl EndFut {
