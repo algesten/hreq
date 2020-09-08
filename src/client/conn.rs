@@ -23,7 +23,8 @@ use std::task::Context;
 use std::task::Poll;
 
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
-const BUF_SIZE: usize = 16_384;
+const START_BUF_SIZE: usize = 16_384;
+const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
 
 pub enum ProtocolImpl {
     Http1(H1SendRequest),
@@ -174,9 +175,10 @@ async fn send_req(
     let (mut res_fut, mut body_send) = proto.do_send(req, no_body).await?;
     let mut early_response = None;
 
+    // this buffer should probably be less than h2 window size
+    let mut buf = Vec::with_capacity(START_BUF_SIZE);
+
     if !no_body {
-        // this buffer must be less than h2 window size
-        let mut buf = vec![0_u8; BUF_SIZE];
         let mut use_body_buf = true;
 
         loop {
@@ -193,6 +195,9 @@ async fn send_req(
             }
 
             let mut amount_read = 0;
+
+            // We will set the size down as soon as we know how much was read.
+            unsafe { buf.set_len(buf.capacity()) };
 
             // use buffered body (from a potential earlier 307/308 redirect)
             if use_body_buf {
@@ -222,6 +227,13 @@ async fn send_req(
 
             if amount_read == 0 {
                 break;
+            }
+
+            if buf.len() == buf.capacity() {
+                let max = (buf.capacity() * 2).min(MAX_BUF_SIZE);
+                trace!("Increase send buffer to: {}", max);
+                let additional = max - buf.capacity();
+                buf.reserve(additional);
             }
 
             // Ship it to they underlying http1.1/http2 layer.
