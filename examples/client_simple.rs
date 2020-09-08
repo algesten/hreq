@@ -1,7 +1,7 @@
 use hreq::prelude::*;
 
 fn main() {
-    let response = http::Request::get("https://httpbin.org/get/")
+    let response = http::Request::get("https://httpbin.org/get")
         .call()
         .block()
         .expect("Failed to call");
