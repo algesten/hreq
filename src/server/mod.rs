@@ -329,12 +329,18 @@ where
         };
 
         // listening is a task so we can return the shutdown handles.
-        let task = async move {
+        let listen_task = async move {
             loop {
                 trace!("Waiting for connection");
 
                 // accept new connections as long as not shut down.
-                let next = end.race(listener.accept()).await?;
+                let next = end.race(listener.accept()).await;
+
+                if next.is_none() {
+                    trace!("Server shutdown, stop accepting connections.");
+                }
+
+                let next = next?;
 
                 match next {
                     Ok(v) => {
@@ -383,7 +389,7 @@ where
             Some(())
         };
 
-        AsyncRuntime::spawn(task);
+        AsyncRuntime::spawn(listen_task);
 
         Ok((shut, local_addr))
     }
@@ -585,6 +591,7 @@ where
                 r?
             } else {
                 // either shutdown or no more requests from conn
+                trace!("No more requests from connection");
                 return Ok(());
             };
 

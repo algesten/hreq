@@ -622,6 +622,7 @@ impl Body {
             }
             idx += amount;
         }
+        trace!("read_to_vec returning len: {}", vec.len());
         Ok(vec)
     }
 

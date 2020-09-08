@@ -12,10 +12,6 @@ fn static_file_get() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     {
         let uri = format!("http://localhost:{}/my/cert", addr.port());
         let res = http::Request::get(uri).call().block()?;
@@ -30,6 +26,7 @@ fn static_file_get() -> Result<(), hreq::Error> {
         assert_eq!(&s[0..10], "-----BEGIN");
     }
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -45,10 +42,6 @@ fn static_send_file() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     {
         let uri = format!("http://localhost:{}/do/something", addr.port());
         let res = http::Request::get(uri).call().block()?;
@@ -63,5 +56,6 @@ fn static_send_file() -> Result<(), hreq::Error> {
         assert_eq!(&s[0..10], "-----BEGIN");
     }
 
+    handle.shutdown().block();
     Ok(())
 }

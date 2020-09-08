@@ -18,10 +18,6 @@ fn tls_client_to_server() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen_tls(0, config).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     let uri = format!("https://localhost:{}/path", addr.port());
 
     let res = http::Request::get(uri)
@@ -31,5 +27,6 @@ fn tls_client_to_server() -> Result<(), hreq::Error> {
 
     assert_eq!(res.status(), 200);
 
+    handle.shutdown().block();
     Ok(())
 }

@@ -79,6 +79,7 @@ fn response_body_timeout() -> Result<(), Error> {
     assert!(err.is_io());
     assert_eq!(err.into_io().unwrap().kind(), io::ErrorKind::TimedOut);
 
-    shut.shutdown().block();
+    // deliberately not await this since it will never complete
+    let _ = shut.shutdown();
     Ok(())
 }

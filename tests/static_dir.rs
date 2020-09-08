@@ -12,10 +12,6 @@ fn static_dir_ctype() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     {
         let uri = format!("http://localhost:{}/my/special/tls_cert.pem", addr.port());
         let res = http::Request::get(uri).call().block()?;
@@ -58,6 +54,7 @@ fn static_dir_ctype() -> Result<(), hreq::Error> {
         assert_eq!(&s[0..12], "おはよう");
     }
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -72,10 +69,6 @@ fn static_dir_subdir() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     let uri = format!("http://localhost:{}/my/special/subdir/ok.txt", addr.port());
     let res = http::Request::get(uri).call().block()?;
 
@@ -88,6 +81,7 @@ fn static_dir_subdir() -> Result<(), hreq::Error> {
     let s = res.into_body().read_to_string().block()?;
     assert_eq!(&s[0..12], "It's alright");
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -101,10 +95,6 @@ fn static_dir_404() -> Result<(), hreq::Error> {
         .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
-
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
 
     {
         let uri = format!("http://localhost:{}/my/special/not_there.txt", addr.port());
@@ -127,6 +117,7 @@ fn static_dir_404() -> Result<(), hreq::Error> {
         assert_eq!(res.status(), 404);
     }
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -141,10 +132,6 @@ fn static_dir_index() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     let uri = format!("http://localhost:{}/my/special/", addr.port());
     let res = http::Request::get(uri).call().block()?;
 
@@ -156,6 +143,7 @@ fn static_dir_index() -> Result<(), hreq::Error> {
 
     // assert_eq!(res.status(), 200);
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -170,15 +158,12 @@ fn static_dir_no_index() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     let uri = format!("http://localhost:{}/my/special/", addr.port());
     let res = http::Request::get(uri).call().block()?;
 
     assert_eq!(res.status(), 404);
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -193,10 +178,6 @@ fn static_dir_other_index() -> Result<(), hreq::Error> {
 
     let (handle, addr) = server.listen(0).block()?;
 
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
-
     let uri = format!("http://localhost:{}/my/special/", addr.port());
     let res = http::Request::get(uri).call().block()?;
 
@@ -206,6 +187,7 @@ fn static_dir_other_index() -> Result<(), hreq::Error> {
         Some("text/plain; charset=Shift_JIS")
     );
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -219,10 +201,6 @@ fn static_dir_last_modified() -> Result<(), hreq::Error> {
         .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
-
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
 
     let uri = format!("http://localhost:{}/my/special/index.html", addr.port());
 
@@ -266,6 +244,7 @@ fn static_dir_last_modified() -> Result<(), hreq::Error> {
         assert_eq!(res.header("content-type"), Some("text/html; charset=UTF-8"));
     }
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -279,10 +258,6 @@ fn static_dir_head() -> Result<(), hreq::Error> {
         .all(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
-
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
 
     let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
     let res = http::Request::head(uri).call().block()?;
@@ -301,6 +276,7 @@ fn static_dir_head() -> Result<(), hreq::Error> {
     let s = res.into_body().read_to_string().block()?;
     assert!(s.is_empty());
 
+    handle.shutdown().block();
     Ok(())
 }
 
@@ -314,10 +290,6 @@ fn static_dir_range() -> Result<(), hreq::Error> {
         .get(hreq::server::Static::dir("tests/data"));
 
     let (handle, addr) = server.listen(0).block()?;
-
-    hreq::AsyncRuntime::spawn(async move {
-        handle.keep_alive().await;
-    });
 
     {
         let uri = format!("http://localhost:{}/my/special/iso8859.txt", addr.port());
@@ -388,5 +360,6 @@ fn static_dir_range() -> Result<(), hreq::Error> {
         assert_eq!(s, "");
     }
 
+    handle.shutdown().block();
     Ok(())
 }
