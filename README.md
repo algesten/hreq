@@ -288,19 +288,25 @@ can route requests, use middleware, handle state and serve TLS.
 See the [`server module doc`] for more details.
 
 ```rust
+// ignore this example if not feature server
+#[cfg(feature = "server")] {
+
 use hreq::prelude::*;
 
-fn main() {
+
+async fn start_server() {
     let mut server = Server::new();
     server.at("/hello/:name").get(hello_there);
-    let (shut, addr) = server.listen(0).block().expect("Failed to listen");
+    let (shut, addr) = server.listen(0).await.expect("Failed to listen");
     println!("Listening to: {}", addr);
-    shut.shutdown().block();
+    shut.shutdown().await;
 }
 
 async fn hello_there(req: http::Request<Body>) -> String {
     let name = req.path_param("name").unwrap();
     format!("Hello there {}!\n", name)
+}
+
 }
 ```
 
@@ -338,6 +344,6 @@ async fn hello_there(req: http::Request<Body>) -> String {
 [`charset_encode_source`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_encode_source
 [`charset_decode_target`]: https://docs.rs/hreq/latest/hreq/trait.RequestBuilderExt.html#tymethod.charset_decode_target
 [serde]: https://crates.io/crates/serde
-[`server module doc`]: server/index.html
+[`server module doc`]: https://docs.rs/hreq/latest/hreq/server/index.html
 
 License: MIT/Apache-2.0
