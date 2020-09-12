@@ -55,8 +55,8 @@ fn sane_headers_with_no_size() -> Result<(), Error> {
     server
         .at("/path")
         .all(|req: http::Request<Body>| async move {
-            assert_eq!(req.header("transfer-encoding"), Some("chunked"));
-            assert_eq!(req.header("content-length"), None);
+            assert_eq!(req.header("transfer-encoding"), None);
+            assert_eq!(req.header("content-length"), Some("10"));
             assert_eq!(req.header("content-encoding"), None);
             let v = req.into_body().read_to_vec().await.unwrap();
             assert_eq!(v.len(), 10);
@@ -84,8 +84,8 @@ fn sane_headers_with_content_enc() -> Result<(), Error> {
         .all(|req: http::Request<Body>| async move {
             println!("{:?}", req);
 
-            assert_eq!(req.header("transfer-encoding"), Some("chunked"));
-            assert_eq!(req.header("content-length"), None);
+            assert_eq!(req.header("transfer-encoding"), None);
+            assert_eq!(req.header("content-length"), Some("23"));
             assert_eq!(req.header("content-encoding"), Some("gzip"));
             let v = req.into_body().read_to_vec().await.unwrap();
             assert_eq!(v.len(), 3);

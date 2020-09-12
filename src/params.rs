@@ -24,6 +24,7 @@ pub(crate) struct HReqParams {
     pub redirect_body_buffer: usize,
     pub with_override: Option<Arc<HostPort<'static>>>,
     pub tls_disable_verify: bool,
+    pub prebuffer: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -146,6 +147,7 @@ impl HReqParams {
             redirect_body_buffer: 0,
             with_override: None,
             tls_disable_verify: false,
+            prebuffer: true,
         }
     }
 

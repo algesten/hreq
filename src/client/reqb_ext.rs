@@ -340,6 +340,17 @@ where
     /// ```
     fn redirect_body_buffer(self, size: usize) -> Self;
 
+    /// Toggle ability to read the request body into memory.
+    ///
+    /// When sending a request body, it's usually a good idea to read the entire body
+    /// (up to some limit) into memory. Doing so avoids using transfer-encoding chunked
+    /// when the content length can be determined.
+    ///
+    /// By default, hreq will attempt to prebuffer up to 256kb request body.
+    ///
+    /// Use this toggle to turn this behavior off.
+    fn prebuffer_request_body(self, enable: bool) -> Self;
+
     /// Override the host, port and TLS setting of where to connect to.
     ///
     /// This is mostly used for testing.
@@ -551,6 +562,12 @@ impl RequestBuilderExt for request::Builder {
     fn redirect_body_buffer(self, size: usize) -> Self {
         with_hreq_params(self, |params| {
             params.redirect_body_buffer = size;
+        })
+    }
+
+    fn prebuffer_request_body(self, enable: bool) -> Self {
+        with_hreq_params(self, |params| {
+            params.prebuffer = enable;
         })
     }
 

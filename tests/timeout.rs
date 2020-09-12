@@ -54,9 +54,12 @@ fn response_body_timeout() -> Result<(), Error> {
 
     let mut server = Server::new();
 
-    server
-        .at("/path")
-        .all(|_: http::Request<Body>| async move { Body::from_async_read(NeverRead, None) });
+    server.at("/path").all(|_: http::Request<Body>| async move {
+        Response::builder()
+            // leaving this on means the test gets stuck already on handling the request.
+            .prebuffer_response_body(false)
+            .body(Body::from_async_read(NeverRead, None))
+    });
 
     let (shut, addr) = server.listen(0).block()?;
 

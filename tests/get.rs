@@ -42,7 +42,7 @@ fn sane_headers() -> Result<(), Error> {
 }
 
 #[test]
-fn res_body1kb_no_size() -> Result<(), Error> {
+fn res_body1kb_no_size_prebuf() -> Result<(), Error> {
     common::setup_logger();
 
     let mut server = Server::new();
@@ -55,7 +55,34 @@ fn res_body1kb_no_size() -> Result<(), Error> {
     let req = http::Request::post("/path").body("")?;
     let res = server.handle(req).block()?;
     assert_eq!(res.status(), 200);
+    assert_eq!(res.header("transfer-encoding"), None);
+    assert_eq!(res.header("content-length"), Some("1024"));
+
+    let bytes = res.into_body().read_to_vec().block()?;
+    assert_eq!(bytes.len(), 1024);
+
+    Ok(())
+}
+
+#[test]
+fn res_body1kb_no_size_no_prebuf() -> Result<(), Error> {
+    common::setup_logger();
+
+    let mut server = Server::new();
+
+    server.at("/path").all(|_: http::Request<Body>| async move {
+        // length None provokes a chunked transfer-encoding
+        Response::builder()
+            .prebuffer_response_body(false)
+            .body(Body::from_sync_read(io::Cursor::new(vec![42; 1024]), None))
+            .unwrap()
+    });
+
+    let req = http::Request::post("/path").body("")?;
+    let res = server.handle(req).block()?;
+    assert_eq!(res.status(), 200);
     assert_eq!(res.header("transfer-encoding"), Some("chunked"));
+    assert_eq!(res.header("content-length"), None);
 
     let bytes = res.into_body().read_to_vec().block()?;
     assert_eq!(bytes.len(), 1024);

@@ -432,6 +432,9 @@ where
             let mut body = body.into();
             let params = parts.extensions.get::<HReqParams>().cloned().unwrap();
             body.configure(&params, &parts.headers, false);
+            if params.prebuffer {
+                body.attempt_prebuffer().await?;
+            }
             // set appropriate headers
             crate::client::configure_request(&mut parts, &body, false);
             (parts, body, params)
@@ -465,17 +468,20 @@ where
 
             server_res_params.copy_from_request(&server_req_params);
             body.configure(&server_res_params, &parts.headers, false);
+            if server_res_params.prebuffer {
+                body.attempt_prebuffer().await?;
+            }
             (parts, body)
         };
 
         // 4. make client response using parts/body from 3.
         let (parts, body) = {
             let len = body.content_encoded_length();
-            let mut body = Body::from_async_read(body, len);
-            body.configure(&client_req_params, &parts.headers, true);
             conn::configure_response(&mut parts, &body, false);
+            let mut client_body = Body::from_async_read(body, len);
+            client_body.configure(&client_req_params, &parts.headers, true);
             parts.extensions.insert(client_req_params.clone());
-            (parts, body)
+            (parts, client_body)
         };
 
         Ok(http::Response::from_parts(parts, body))

@@ -2,11 +2,11 @@ mod common;
 
 #[test]
 #[cfg(feature = "gzip")]
-fn gzip_response() -> Result<(), hreq::Error> {
+fn gzip_response_prebuf() -> Result<(), hreq::Error> {
+    common::setup_logger();
+
     use futures_util::io::Cursor;
     use hreq::prelude::*;
-
-    common::setup_logger();
 
     let mut server = Server::new();
 
@@ -26,6 +26,8 @@ fn gzip_response() -> Result<(), hreq::Error> {
 
     assert_eq!(res.status(), 200);
     assert_eq!(res.header("content-encoding"), Some("gzip"));
+    assert_eq!(res.header("transfer-encoding"), None);
+
     let v = res.into_body().read_to_vec().block()?;
     let s = String::from_utf8_lossy(&v);
 
@@ -75,7 +77,7 @@ fn gzip_response_no_decode() -> Result<(), hreq::Error> {
 
 #[test]
 #[cfg(feature = "gzip")]
-fn gzip_request() -> Result<(), hreq::Error> {
+fn gzip_request_prebuf() -> Result<(), hreq::Error> {
     use hreq::prelude::*;
     use hreq::Error;
 
@@ -85,6 +87,8 @@ fn gzip_request() -> Result<(), hreq::Error> {
         .at("/path")
         .all(|req: http::Request<Body>| async move {
             assert_eq!(req.header("content-encoding"), Some("gzip"));
+            assert_eq!(req.header("transfer-encoding"), None);
+            assert_eq!(req.header("content-length"), Some("46"));
             let s = req.into_body().read_to_string().await?;
             assert_eq!(s, "request that is compressed");
             Ok::<_, Error>("Ok")

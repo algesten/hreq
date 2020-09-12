@@ -352,6 +352,7 @@ extern crate log;
 mod async_impl;
 mod block_ext;
 mod body;
+mod body_codec;
 mod body_send;
 mod charset;
 mod client;

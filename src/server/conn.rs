@@ -148,6 +148,11 @@ impl SendResponse {
 
         body.configure(&params, &parts.headers, false);
 
+        // for small response bodies, we try to fully buffer the data.
+        if params.prebuffer {
+            body.attempt_prebuffer().await?;
+        }
+
         configure_response(&mut parts, &body, self.is_http2());
 
         let res = http::Response::from_parts(parts, ());

@@ -8,6 +8,7 @@ use crate::AsyncRuntime;
 use crate::Error;
 use bytes::Bytes;
 use encoding_rs::Encoding;
+use futures_io::AsyncBufRead;
 use futures_util::future::poll_fn;
 use futures_util::io::BufReader;
 use futures_util::ready;
@@ -18,6 +19,7 @@ use serde::Serialize;
 use std::fmt;
 use std::future::Future;
 use std::io;
+use std::io::Cursor;
 use std::io::Read;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -28,6 +30,7 @@ use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
 
 const START_BUF_SIZE: usize = 16_384;
 const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
+const MAX_PREBUFFER: usize = 256 * 1024;
 
 const CT_TEXT: &str = "text/plain; charset=utf-8";
 const CT_BIN: &str = "application/octet-stream";
@@ -175,6 +178,7 @@ pub struct Body {
     char_codec: Option<CharCodec>,
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
+    prebuffered: Option<Cursor<Vec<u8>>>,
 }
 
 impl Body {
@@ -434,6 +438,7 @@ impl Body {
             char_codec: None,
             deadline_fut: None,
             unfinished_recs: None,
+            prebuffered: None,
         }
     }
 
@@ -459,7 +464,9 @@ impl Body {
     /// Tells the length of the body _with content encoding_. This could
     /// take both gzip and charset into account, or just bail if we don't know.
     pub(crate) fn content_encoded_length(&self) -> Option<u64> {
-        if self.codec.affects_content_size() || self.char_codec.is_some() {
+        if self.prebuffered.is_some() {
+            self.length
+        } else if self.codec.affects_content_size() || self.char_codec.is_some() {
             // things like gzip will affect self.length
             None
         } else {
@@ -545,6 +552,24 @@ impl Body {
                 );
             }
         }
+    }
+
+    pub(crate) async fn attempt_prebuffer(&mut self) -> Result<(), Error> {
+        if let Some(amt) = self.codec.attempt_prebuffer().await? {
+            // content is fully buffered
+            let mut buffer_into = Vec::with_capacity(amt);
+
+            use futures_util::io::AsyncReadExt;
+
+            self.read_to_end(&mut buffer_into).await?;
+
+            trace!("Fully prebuffered: {}", buffer_into.len());
+
+            self.length = Some(buffer_into.len() as u64);
+            self.prebuffered = Some(Cursor::new(buffer_into));
+        }
+
+        Ok(())
     }
 
     #[cfg(test)]
@@ -778,12 +803,23 @@ impl BodyCodec {
 
     fn reader_ref(&self) -> Option<&BodyReader> {
         match self {
-            BodyCodec::Deferred(_) => None,
+            BodyCodec::Deferred(r) => r.as_ref(),
             BodyCodec::Pass(r) => Some(r),
             #[cfg(feature = "gzip")]
             BodyCodec::GzipDecoder(r) => Some(r.get_ref().get_ref()),
             #[cfg(feature = "gzip")]
             BodyCodec::GzipEncoder(r) => Some(r.get_ref().get_ref()),
+        }
+    }
+
+    fn reader_mut(&mut self) -> Option<&mut BodyReader> {
+        match self {
+            BodyCodec::Deferred(r) => r.as_mut(),
+            BodyCodec::Pass(r) => Some(r),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipDecoder(r) => Some(r.get_mut().get_mut()),
+            #[cfg(feature = "gzip")]
+            BodyCodec::GzipEncoder(r) => Some(r.get_mut().get_mut()),
         }
     }
 
@@ -833,7 +869,7 @@ impl BodyReader {
     fn new(imp: BodyImpl, prebuffer: bool) -> Self {
         BodyReader {
             imp,
-            prebuffer_to: if prebuffer { MAX_BUF_SIZE } else { 0 },
+            prebuffer_to: if prebuffer { MAX_PREBUFFER } else { 0 },
             h2_leftover_bytes: None,
             buffer: Vec::with_capacity(START_BUF_SIZE),
             consumed: 0,
@@ -841,12 +877,21 @@ impl BodyReader {
         }
     }
 
-    // fn is_http11(&self) -> bool {
-    //     match &self.imp {
-    //         BodyImpl::Http1(_, _) => true,
-    //         _ => false,
-    //     }
-    // }
+    /// Fills the internal buffer from the underlying reader. If prebuffer_to is > 0 will
+    /// try to fill to that level.
+    ///
+    /// Returns the number of bytes read if the underlying reader is read to end, which
+    /// means we got all contents in memory.
+    async fn attempt_prebuffer(&mut self) -> io::Result<Option<usize>> {
+        poll_fn(|cx| Pin::new(&mut *self).poll_refill_buf(cx)).await?;
+
+        Ok(if self.is_finished {
+            Some(self.buffer.len())
+        } else {
+            None
+        })
+        .into()
+    }
 
     fn poll_read_underlying(
         &mut self,
@@ -944,7 +989,7 @@ impl BodyReader {
 
             // ensure there is spare capacity.
             if buffer_len == self.buffer.capacity() {
-                let max = (self.buffer.capacity() * 2).min(MAX_BUF_SIZE);
+                let max = (self.buffer.capacity() * 2).min(MAX_PREBUFFER);
                 trace!("Increase poll_fill_buf buffer to: {}", max);
                 let additional = max - self.buffer.capacity();
                 self.buffer.reserve(additional);
@@ -984,8 +1029,6 @@ impl BodyReader {
         self.buffer.len() - self.consumed
     }
 }
-
-use futures_io::AsyncBufRead;
 
 impl AsyncBufRead for BodyReader {
     fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<&[u8]>> {
@@ -1097,15 +1140,23 @@ impl AsyncRead for Body {
             }
         }
 
-        let amount = ready!(if let Some(char_codec) = &mut this.char_codec {
-            char_codec.poll_codec(cx, &mut this.codec, buf)
+        let amount = if let Some(prebuf) = &mut this.prebuffered {
+            // entire contents is prebuffered
+            prebuf.read(buf)?
         } else {
-            Pin::new(&mut this.codec).poll_read(cx, buf)
-        })?;
+            // read from underlying
+            ready!(if let Some(char_codec) = &mut this.char_codec {
+                char_codec.poll_codec(cx, &mut this.codec, buf)
+            } else {
+                Pin::new(&mut this.codec).poll_read(cx, buf)
+            })?
+        };
+
         if amount == 0 {
             // by removing this arc, we reduce the unfinished recs count.
             this.unfinished_recs.take();
         }
+
         Ok(amount).into()
     }
 }

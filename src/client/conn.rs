@@ -100,6 +100,11 @@ impl Connection {
         // resolve deferred body codecs because content-encoding and content-type are settled.
         if body.is_configurable() {
             body.configure(&params, &parts.headers, false);
+
+            // for small request bodies we try to fully buffer the incoming data.
+            if params.prebuffer {
+                body.attempt_prebuffer().await?;
+            }
         }
 
         configure_request(&mut parts, &body, self.is_http2());

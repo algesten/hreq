@@ -161,6 +161,17 @@ where
     /// ```
     fn content_encode(self, enabled: bool) -> Self;
 
+    /// Toggle ability to read the response body into memory.
+    ///
+    /// When sending a response body, it's usually a good idea to read the entire body
+    /// (up to some limit) into memory. Doing so avoids using transfer-encoding chunked
+    /// when the content length can be determined.
+    ///
+    /// By default, hreq will attempt to prebuffer up to 256kb response body.
+    ///
+    /// Use this toggle to turn this behavior off.
+    fn prebuffer_response_body(self, enable: bool) -> Self;
+
     /// Finish building the response by providing an object serializable to JSON.
     ///
     /// Objects made serializable with serde_derive can be automatically turned into
@@ -223,6 +234,12 @@ impl ResponseBuilderExt for response::Builder {
     fn content_encode(self, enable: bool) -> Self {
         with_hreq_params(self, |params| {
             params.content_encode = enable;
+        })
+    }
+
+    fn prebuffer_response_body(self, enable: bool) -> Self {
+        with_hreq_params(self, |params| {
+            params.prebuffer = enable;
         })
     }
 
