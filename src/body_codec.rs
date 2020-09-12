@@ -115,7 +115,7 @@ pub struct BodyReader {
     prebuffer_to: usize,
     buffer: UninitBuf,
     consumed: usize,
-    h2_leftover_bytes: Option<Bytes>,
+    h2_leftover_bytes: Option<H2BytesReader>,
     is_finished: bool,
 }
 
@@ -165,9 +165,14 @@ impl BodyReader {
         }
 
         // h2 streams might have leftovers to use up before reading any more.
-        if let Some(data) = self.h2_leftover_bytes.take() {
-            let amount = self.h2_bytes_to_buf(data, buf);
-            return Ok(amount).into();
+        if let Some(br) = &mut self.h2_leftover_bytes {
+            let amt = br.read(buf)?;
+
+            if br.len() == 0 {
+                self.h2_leftover_bytes = None;
+            }
+
+            return Ok(amt).into();
         }
 
         let amount = match &mut self.imp {
@@ -190,6 +195,7 @@ impl BodyReader {
                         e.into_io()
                             .unwrap_or_else(|| io::Error::new(io::ErrorKind::Other, other))
                     })?;
+
                     recv.flow_control()
                         .release_capacity(data.len())
                         .map_err(|e| {
@@ -197,7 +203,16 @@ impl BodyReader {
                             e.into_io()
                                 .unwrap_or_else(|| io::Error::new(io::ErrorKind::Other, other))
                         })?;
-                    self.h2_bytes_to_buf(data, buf)
+
+                    let mut br = H2BytesReader(data, 0);
+                    let amt = br.read(buf)?;
+
+                    // if any is left, leave it for later.
+                    if br.len() > 0 {
+                        self.h2_leftover_bytes = Some(br);
+                    }
+
+                    amt
                 } else {
                     0
                 }
@@ -209,21 +224,6 @@ impl BodyReader {
         }
 
         Ok(amount).into()
-    }
-
-    // helper to shuffle Bytes into a &[u8] and handle the remains.
-    fn h2_bytes_to_buf(&mut self, mut data: Bytes, buf: &mut [u8]) -> usize {
-        let amt = (&data[..]).read(buf).unwrap();
-
-        let remain = if amt < data.len() {
-            Some(data.split_off(amt))
-        } else {
-            None
-        };
-
-        self.h2_leftover_bytes = remain;
-
-        amt
     }
 
     fn poll_refill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -380,5 +380,27 @@ impl fmt::Debug for BodyImpl {
             BodyImpl::Http1(_) => write!(f, "http1"),
             BodyImpl::Http2(_) => write!(f, "http2"),
         }
+    }
+}
+
+/// Helper to deal with bytes::Bytes not being fully read.
+struct H2BytesReader(Bytes, usize);
+
+impl H2BytesReader {
+    fn len(&self) -> usize {
+        self.0.len() - self.1
+    }
+}
+
+impl Read for H2BytesReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.len() == 0 {
+            return Ok(0);
+        }
+
+        let amt = (&self.0[self.1..]).read(buf)?;
+        self.1 += amt;
+
+        Ok(amt)
     }
 }
