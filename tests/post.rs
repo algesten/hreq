@@ -129,8 +129,8 @@ fn req_body1kb_with_size() -> Result<(), Error> {
 }
 
 #[test]
-fn req_body10mb_no_size() -> Result<(), Error> {
-    const SIZE: u64 = 10 * 1024 * 1024;
+fn req_body100mb_no_size() -> Result<(), Error> {
+    const SIZE: u64 = 100 * 1024 * 1024;
     let mut server = Server::new();
 
     server
@@ -154,8 +154,8 @@ fn req_body10mb_no_size() -> Result<(), Error> {
 }
 
 #[test]
-fn req_body10mb_with_size() -> Result<(), Error> {
-    const SIZE: u64 = 10 * 1024 * 1024;
+fn req_body100mb_with_size() -> Result<(), Error> {
+    const SIZE: u64 = 100 * 1024 * 1024;
     let mut server = Server::new();
 
     server
