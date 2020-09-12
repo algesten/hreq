@@ -797,25 +797,18 @@ impl BodyCodec {
             BodyCodec::GzipEncoder(_) => true,
         }
     }
-}
 
-impl AsyncBufRead for BodyCodec {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<&[u8]>> {
-        match self.get_mut() {
-            BodyCodec::Deferred(_) => panic!("poll_fill_buf on Deferred"),
-            BodyCodec::Pass(r) => Pin::new(r).poll_fill_buf(cx),
-            BodyCodec::GzipDecoder(r) => Pin::new(r).poll_fill_buf(cx),
-            BodyCodec::GzipEncoder(r) => Pin::new(r).poll_fill_buf(cx),
+    /// Attempt to fully read the underlying content into memory.
+    ///
+    /// Returns the amount read if the entire contents was read.
+    async fn attempt_prebuffer(&mut self) -> io::Result<Option<usize>> {
+        if let Some(rdr) = self.reader_mut() {
+            if let Some(amt) = rdr.attempt_prebuffer().await? {
+                // content is fully buffered
+                return Ok(Some(amt));
+            }
         }
-    }
-
-    fn consume(self: Pin<&mut Self>, amt: usize) {
-        match self.get_mut() {
-            BodyCodec::Deferred(_) => panic!("consume on Deferred"),
-            BodyCodec::Pass(r) => Pin::new(r).consume(amt),
-            BodyCodec::GzipDecoder(r) => Pin::new(r).consume(amt),
-            BodyCodec::GzipEncoder(r) => Pin::new(r).consume(amt),
-        }
+        Ok(None)
     }
 }
 
@@ -924,6 +917,65 @@ impl BodyReader {
         max
     }
 
+    fn poll_refill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.unconsumed_len() > 0 {
+            return Ok(()).into();
+        }
+
+        // reading resets the consume index.
+        self.consumed = 0;
+        self.buffer.truncate(0);
+
+        loop {
+            let buffer_len = self.buffer.len();
+
+            let read_enough =
+                // when prebuffering, we are reading until the buffer len() is as much as allowed.
+                self.prebuffer_to > 0 && buffer_len == self.prebuffer_to
+                // when not prebuffering, any content is enough.
+                || self.prebuffer_to == 0 && self.buffer.len() > 0;
+
+            if self.is_finished || read_enough {
+                // only first poll_fill_buf is prebuffering.
+                self.prebuffer_to = 0;
+
+                return Ok(()).into();
+            }
+
+            // ensure there is spare capacity.
+            if buffer_len == self.buffer.capacity() {
+                let max = (self.buffer.capacity() * 2).min(MAX_BUF_SIZE);
+                trace!("Increase poll_fill_buf buffer to: {}", max);
+                let additional = max - self.buffer.capacity();
+                self.buffer.reserve(additional);
+            }
+
+            // we resize down once we know how much read.
+            unsafe { self.buffer.set_len(self.buffer.capacity()) };
+
+            let x = {
+                // this is safe cause self.poll_read_underlying is not touching self.buffer
+                let buffer = &mut self.buffer as *mut Vec<u8>;
+                let buf = unsafe { &mut (*buffer)[buffer_len..] };
+
+                self.poll_read_underlying(cx, buf)
+            };
+
+            // how many new bytes were read into the buffer?
+            let new_bytes = if let Poll::Ready(Ok(amt)) = &x {
+                *amt
+            } else {
+                0
+            };
+
+            // it's important this always happens to leave buffer in a safe state.
+            self.buffer.truncate(buffer_len + new_bytes);
+
+            // pending and error exit here
+            ready!(x)?;
+        }
+    }
+
     fn unconsumed(&self) -> &[u8] {
         &self.buffer[self.consumed..]
     }
@@ -939,62 +991,9 @@ impl AsyncBufRead for BodyReader {
     fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<&[u8]>> {
         let this = self.get_mut();
 
-        if this.unconsumed_len() > 0 {
-            return Ok(this.unconsumed()).into();
-        }
+        ready!(this.poll_refill_buf(cx))?;
 
-        // reading resets the consume index.
-        this.consumed = 0;
-        this.buffer.truncate(0);
-
-        loop {
-            let buffer_len = this.buffer.len();
-
-            let read_enough =
-                // when prebuffering, we are reading until the buffer len() is as much as allowed.
-                this.prebuffer_to > 0 && buffer_len == this.prebuffer_to
-                // when not prebuffering, any content is enough.
-                || this.prebuffer_to == 0 && this.buffer.len() > 0;
-
-            if this.is_finished || read_enough {
-                // only first poll_fill_buf is prebuffering.
-                this.prebuffer_to = 0;
-
-                return Ok(this.unconsumed()).into();
-            }
-
-            // ensure there is spare capacity.
-            if buffer_len == this.buffer.capacity() {
-                let max = (this.buffer.capacity() * 2).min(MAX_BUF_SIZE);
-                trace!("Increase poll_fill_buf buffer to: {}", max);
-                let additional = max - this.buffer.capacity();
-                this.buffer.reserve(additional);
-            }
-
-            // we resize down once we know how much read.
-            unsafe { this.buffer.set_len(this.buffer.capacity()) };
-
-            let x = {
-                // this is safe cause this.poll_read_underlying is not touching this.buffer
-                let buffer = &mut this.buffer as *mut Vec<u8>;
-                let buf = unsafe { &mut (*buffer)[buffer_len..] };
-
-                this.poll_read_underlying(cx, buf)
-            };
-
-            // how many new bytes were read into the buffer?
-            let new_bytes = if let Poll::Ready(Ok(amt)) = &x {
-                *amt
-            } else {
-                0
-            };
-
-            // it's important this always happens to leave buffer in a safe state.
-            this.buffer.truncate(buffer_len + new_bytes);
-
-            // pending and error exit here
-            ready!(x)?;
-        }
+        return Ok(this.unconsumed()).into();
     }
 
     fn consume(self: Pin<&mut Self>, amt: usize) {
@@ -1129,6 +1128,25 @@ impl AsyncRead for BodyCodec {
     }
 }
 
+impl AsyncBufRead for BodyCodec {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<&[u8]>> {
+        match self.get_mut() {
+            BodyCodec::Deferred(_) => panic!("poll_fill_buf on Deferred"),
+            BodyCodec::Pass(r) => Pin::new(r).poll_fill_buf(cx),
+            BodyCodec::GzipDecoder(r) => Pin::new(r).poll_fill_buf(cx),
+            BodyCodec::GzipEncoder(r) => Pin::new(r).poll_fill_buf(cx),
+        }
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        match self.get_mut() {
+            BodyCodec::Deferred(_) => panic!("consume on Deferred"),
+            BodyCodec::Pass(r) => Pin::new(r).consume(amt),
+            BodyCodec::GzipDecoder(r) => Pin::new(r).consume(amt),
+            BodyCodec::GzipEncoder(r) => Pin::new(r).consume(amt),
+        }
+    }
+}
 impl fmt::Debug for BodyCodec {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
