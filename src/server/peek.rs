@@ -1,5 +1,5 @@
+use crate::uninit::UninitBuf;
 use crate::{AsyncRead, AsyncSeek, AsyncWrite};
-use futures_util::io::AsyncReadExt;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 /// Helper to peek a Stream.
 pub(crate) struct Peekable<S> {
     stream: S,
-    buf: Vec<u8>,
+    buf: UninitBuf,
     idx: usize,
     finished: bool,
 }
@@ -16,7 +16,7 @@ impl<S> Peekable<S> {
     pub fn new(stream: S, capacity: usize) -> Self {
         Peekable {
             stream,
-            buf: Vec::with_capacity(capacity),
+            buf: UninitBuf::with_capacity(capacity),
             idx: 0,
             finished: false,
         }
@@ -32,9 +32,6 @@ impl<S: AsyncRead + Unpin> Peekable<S> {
             self.idx = 0;
         }
 
-        // ensure we can hold more elements
-        self.buf.reserve(len - self.buf.len());
-
         loop {
             let cur_len = self.buf.len();
 
@@ -44,21 +41,9 @@ impl<S: AsyncRead + Unpin> Peekable<S> {
                 return Ok(&self.buf[0..to_return]);
             }
 
-            // we will set the size down again once read.
-            unsafe { self.buf.set_len(len) };
+            let amt = self.buf.read_from_async(&mut self.stream).await?;
 
-            let x = self.stream.read(&mut self.buf[cur_len..]).await;
-
-            let amt = if let Ok(amt) = &x { *amt } else { 0 };
-
-            // must always run to not have unitialized bytes in buf.
-            let new_len = cur_len + amt;
-            self.buf.truncate(new_len);
-
-            // error exit here.
-            let read = x?;
-
-            if read == 0 {
+            if amt == 0 {
                 self.finished = true;
             }
         }

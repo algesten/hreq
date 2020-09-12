@@ -364,6 +364,7 @@ mod params;
 mod proto;
 mod psl;
 mod res_ext;
+mod uninit;
 mod uri_ext;
 
 pub use client::{Agent, ResponseFuture};

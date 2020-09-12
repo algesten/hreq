@@ -4,6 +4,7 @@ use crate::body_codec::{BodyCodec, BodyImpl};
 use crate::charset::CharCodec;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
+use crate::uninit::UninitBuf;
 use crate::AsyncRead;
 use crate::AsyncRuntime;
 use crate::Error;
@@ -21,9 +22,6 @@ use std::io::Read;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-
-const START_BUF_SIZE: usize = 16_384;
-const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
 
 const CT_TEXT: &str = "text/plain; charset=utf-8";
 const CT_BIN: &str = "application/octet-stream";
@@ -710,25 +708,12 @@ impl Body {
     /// resp.body_mut().read_and_discard();
     /// ```
     pub async fn read_and_discard(&mut self) -> Result<(), Error> {
-        let mut buf = Vec::with_capacity(START_BUF_SIZE);
+        let mut buf = UninitBuf::new();
         loop {
-            // this is safe because we resize down to the bytes that were read.
-            unsafe { buf.set_len(buf.capacity()) };
-
-            let read = self.read(&mut buf).await?;
-
-            buf.resize(read, 0);
+            let read = buf.read_from_async(self).await?;
 
             if read == 0 {
                 break;
-            }
-
-            // Extend buf if we filled it fully.
-            if buf.len() == buf.capacity() {
-                let max = (buf.capacity() * 2).min(MAX_BUF_SIZE);
-                trace!("Increase read buffer to: {}", max);
-                let additional = max - buf.capacity();
-                buf.reserve(additional);
             }
         }
         Ok(())

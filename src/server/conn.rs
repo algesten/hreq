@@ -3,6 +3,7 @@ use crate::body_codec::BodyImpl;
 use crate::body_send::BodySender;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
+use crate::uninit::UninitBuf;
 use crate::Error;
 use crate::AGENT_IDENT;
 use crate::{AsyncRead, AsyncWrite};
@@ -14,9 +15,6 @@ use hreq_h2::server::SendResponse as H2SendResponse;
 use httpdate::fmt_http_date;
 use std::net::SocketAddr;
 use std::time::SystemTime;
-
-const START_BUF_SIZE: usize = 16_384;
-const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
 
 pub(crate) enum Connection<Stream> {
     H1(H1Connection<Stream>),
@@ -160,29 +158,19 @@ impl SendResponse {
         let mut body_send = self.do_send(res).await?;
 
         // this buffer should probably be less than h2 window size
-        let mut buf = Vec::with_capacity(START_BUF_SIZE);
+        let mut buf = UninitBuf::new();
 
         if !body.is_definitely_no_body() {
             loop {
-                // We will set the size down as soon as we know how much was read.
-                unsafe { buf.set_len(buf.capacity()) };
+                buf.clear();
 
-                let amount_read = body.read(&mut buf[..]).await?;
-
-                buf.resize(amount_read, 0);
+                let amount_read = buf.read_from_async(&mut body).await?;
 
                 // Ship it to they underlying http1.1/http2 layer.
                 body_send.send_data(&buf[0..amount_read]).await?;
 
                 if amount_read == 0 {
                     break;
-                }
-
-                if buf.len() == buf.capacity() {
-                    let max = (buf.capacity() * 2).min(MAX_BUF_SIZE);
-                    trace!("Increase send buffer to: {}", max);
-                    let additional = max - buf.capacity();
-                    buf.reserve(additional);
                 }
             }
         }

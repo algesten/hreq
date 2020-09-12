@@ -1,3 +1,4 @@
+use crate::uninit::UninitBuf;
 use crate::AsyncRead;
 use bytes::Bytes;
 use futures_io::AsyncBufRead;
@@ -112,7 +113,7 @@ impl BodyCodec {
 pub struct BodyReader {
     imp: BodyImpl,
     prebuffer_to: usize,
-    buffer: Vec<u8>,
+    buffer: UninitBuf,
     consumed: usize,
     h2_leftover_bytes: Option<Bytes>,
     is_finished: bool,
@@ -132,7 +133,7 @@ impl BodyReader {
             imp,
             prebuffer_to: if prebuffer { MAX_PREBUFFER } else { 0 },
             h2_leftover_bytes: None,
-            buffer: Vec::with_capacity(START_BUF_SIZE),
+            buffer: UninitBuf::with_capacity(START_BUF_SIZE),
             consumed: 0,
             is_finished: false,
         }
@@ -232,7 +233,7 @@ impl BodyReader {
 
         // reading resets the consume index.
         self.consumed = 0;
-        self.buffer.truncate(0);
+        self.buffer.clear();
 
         loop {
             let buffer_len = self.buffer.len();
@@ -250,37 +251,11 @@ impl BodyReader {
                 return Ok(()).into();
             }
 
-            // ensure there is spare capacity.
-            if buffer_len == self.buffer.capacity() {
-                let max = (self.buffer.capacity() * 2).min(MAX_PREBUFFER);
-                trace!("Increase poll_fill_buf buffer to: {}", max);
-                let additional = max - self.buffer.capacity();
-                self.buffer.reserve(additional);
-            }
+            // this is safe cause self.poll_read_underlying is not touching self.buffer
+            let ptr = &mut self.buffer as *mut UninitBuf;
+            let buf = unsafe { &mut *ptr };
 
-            // we resize down once we know how much read.
-            unsafe { self.buffer.set_len(self.buffer.capacity()) };
-
-            let x = {
-                // this is safe cause self.poll_read_underlying is not touching self.buffer
-                let buffer = &mut self.buffer as *mut Vec<u8>;
-                let buf = unsafe { &mut (*buffer)[buffer_len..] };
-
-                self.poll_read_underlying(cx, buf)
-            };
-
-            // how many new bytes were read into the buffer?
-            let new_bytes = if let Poll::Ready(Ok(amt)) = &x {
-                *amt
-            } else {
-                0
-            };
-
-            // it's important this always happens to leave buffer in a safe state.
-            self.buffer.truncate(buffer_len + new_bytes);
-
-            // pending and error exit here
-            ready!(x)?;
+            ready!(buf.poll_delegate(|buf| self.poll_read_underlying(cx, buf)))?;
         }
     }
 

@@ -16,7 +16,6 @@ use hreq_h2::client::SendRequest as H2SendRequest;
 use once_cell::sync::Lazy;
 use std::fmt;
 use std::future::Future;
-use std::io::Read;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -24,8 +23,6 @@ use std::task::Context;
 use std::task::Poll;
 
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
-const START_BUF_SIZE: usize = 16_384;
-const MAX_BUF_SIZE: usize = 4 * 1024 * 1024;
 
 pub enum ProtocolImpl {
     Http1(H1SendRequest),
@@ -181,13 +178,17 @@ async fn send_req(
     let (mut res_fut, mut body_send) = proto.do_send(req, no_body).await?;
     let mut early_response = None;
 
+    use crate::uninit::UninitBuf;
+
     // this buffer should probably be less than h2 window size
-    let mut buf = Vec::with_capacity(START_BUF_SIZE);
+    let mut buf = UninitBuf::new();
 
     if !no_body {
         let mut use_body_buf = true;
 
         loop {
+            buf.clear();
+
             match TryOnceFuture(&mut res_fut).await {
                 TryOnce::Pending => {
                     // early response did not happen, keep sending body
@@ -202,12 +203,9 @@ async fn send_req(
 
             let mut amount_read = 0;
 
-            // We will set the size down as soon as we know how much was read.
-            unsafe { buf.set_len(buf.capacity()) };
-
             // use buffered body (from a potential earlier 307/308 redirect)
             if use_body_buf {
-                let n = body_buffer.read(&mut buf[..]);
+                let n = buf.read_from_sync(body_buffer)?;
                 if n == 0 {
                     // no more buffer to use
                     use_body_buf = false;
@@ -218,7 +216,7 @@ async fn send_req(
 
             // read new body data
             if !use_body_buf {
-                let n = body_read.read(&mut buf[..]).await?;
+                let n = buf.read_from_async(&mut body_read).await?;
 
                 // Append read data to the body_buffer in case of 307/308 redirect.
                 // The body_buffer might be inert and no bytes are retained.break
@@ -233,13 +231,6 @@ async fn send_req(
 
             if amount_read == 0 {
                 break;
-            }
-
-            if buf.len() == buf.capacity() {
-                let max = (buf.capacity() * 2).min(MAX_BUF_SIZE);
-                trace!("Increase send buffer to: {}", max);
-                let additional = max - buf.capacity();
-                buf.reserve(additional);
             }
 
             // Ship it to they underlying http1.1/http2 layer.
@@ -388,19 +379,6 @@ impl BodyBuf {
         }
     }
 
-    /// Read from this buffer without dropping any data.
-    fn read(&mut self, buf: &mut [u8]) -> usize {
-        if let Some(vec) = &mut self.vec {
-            let amt = (&vec[self.read_idx..]).read(buf).unwrap();
-
-            self.read_idx += amt;
-
-            amt
-        } else {
-            0
-        }
-    }
-
     /// Append more data to this buffer. If the amount of data to append is more than the
     /// buffer capacity, the buffer is cleared and no data is retained anymore.
     fn append(&mut self, buf: &[u8]) {
@@ -419,5 +397,22 @@ impl BodyBuf {
     /// Current amount of retained bytes.
     fn len(&self) -> usize {
         self.vec.as_ref().map(|v| v.len()).unwrap_or(0)
+    }
+}
+
+use std::io;
+
+impl io::Read for BodyBuf {
+    /// Read from this buffer without dropping any data.
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        Ok(if let Some(vec) = &mut self.vec {
+            let amt = (&vec[self.read_idx..]).read(buf).unwrap();
+
+            self.read_idx += amt;
+
+            amt
+        } else {
+            0
+        })
     }
 }
