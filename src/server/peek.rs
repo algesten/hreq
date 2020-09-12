@@ -27,9 +27,7 @@ impl<S: AsyncRead + Unpin> Peekable<S> {
     pub async fn peek(&mut self, len: usize) -> Result<&[u8], io::Error> {
         // peeking will reset the read index if we have one.
         if self.idx > 0 {
-            let split = self.buf.split_off(self.idx);
-            self.buf = split;
-            self.idx = 0;
+            panic!("peek() before fully reading previous peeked amount");
         }
 
         loop {

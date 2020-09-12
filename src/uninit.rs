@@ -45,22 +45,6 @@ impl UninitBuf {
     pub fn len(&self) -> usize {
         self.len
     }
-
-    #[cfg(feature = "server")]
-    pub fn split_off(&mut self, at: usize) -> Self {
-        assert!(at <= self.len);
-
-        self.set_safe_size();
-
-        let buf = self.buf.split_off(at);
-        self.len = self.buf.len();
-
-        UninitBuf {
-            len: buf.len(),
-            buf,
-            expand: false,
-        }
-    }
 }
 
 impl UninitBuf {
