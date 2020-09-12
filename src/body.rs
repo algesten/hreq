@@ -116,7 +116,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 ///   * [`Body.read()`]
 ///   * [`Body.read_to_vec()`]
 ///   * [`Body.read_to_string()`]
-///   * [`Body.read_to_end()`]
+///   * [`Body.read_and_discard()`]
 ///
 /// Finaly `Body` implements `AsyncRead`, which means that in many cases, it can be used
 /// as is in rust's async ecosystem.
@@ -161,7 +161,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 /// [`Body.read()`]: struct.Body.html#method.read
 /// [`Body.read_to_vec()`]: struct.Body.html#method.read_to_vec
 /// [`Body.read_to_string()`]: struct.Body.html#method.read_to_string
-/// [`Body.read_to_end()`]: struct.Body.html#method.read_to_end
+/// [`Body.read_and_discard()`]: struct.Body.html#method.read_and_discard
 /// [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
 /// [`charset_encode`]: trait.RequestBuilderExt.html#tymethod.charset_encode
 /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
@@ -702,9 +702,9 @@ impl Body {
     /// let mut resp = Request::get("https://httpbin.org/get")
     ///     .call().block().unwrap();
     ///
-    /// resp.body_mut().read_to_end();
+    /// resp.body_mut().read_and_discard();
     /// ```
-    pub async fn read_to_end(&mut self) -> Result<(), Error> {
+    pub async fn read_and_discard(&mut self) -> Result<(), Error> {
         let mut buf = Vec::with_capacity(START_BUF_SIZE);
         loop {
             // this is safe because we resize down to the bytes that were read.

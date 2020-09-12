@@ -411,7 +411,7 @@ impl Agent {
 
                         // exhaust the previous body before following the redirect.
                         // this is to ensure http1.1 connections are in a good state.
-                        if res.body_mut().read_to_end().await.is_err() {
+                        if res.body_mut().read_and_discard().await.is_err() {
                             // some servers just close the connection after a redirect.
                             retain = false;
                         }
