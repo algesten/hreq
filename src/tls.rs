@@ -10,6 +10,7 @@ use futures_util::ready;
 use rustls::Session;
 use rustls::{ClientConfig, ClientSession};
 use std::io;
+use std::io::Read;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -265,8 +266,9 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncRead for TlsStream<S, E> {
         ready!(this.poll_tls(cx, true))?;
 
         let idx = this.plaintext_idx;
-        let amount = buf.len().min(this.plaintext_left());
-        (&mut buf[0..amount]).copy_from_slice(&this.plaintext[idx..(idx + amount)]);
+
+        let amount = (&this.plaintext[idx..]).read(buf)?;
+
         this.plaintext_idx += amount;
 
         Ok(amount).into()
@@ -355,11 +357,13 @@ impl<'a> io::Read for SyncStream<'a> {
         if from.is_empty() {
             return would_block();
         }
-        let max = buf.len().min(from.len());
-        (&mut buf[0..max]).copy_from_slice(&from[0..max]);
-        let rest = from.split_off(max);
+
+        let amt = from.as_slice().read(buf)?;
+
+        let rest = from.split_off(amt);
         *self.read_buf = rest;
-        Ok(max)
+
+        Ok(amt)
     }
 }
 

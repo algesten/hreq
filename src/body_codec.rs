@@ -212,15 +212,17 @@ impl BodyReader {
 
     // helper to shuffle Bytes into a &[u8] and handle the remains.
     fn h2_bytes_to_buf(&mut self, mut data: Bytes, buf: &mut [u8]) -> usize {
-        let max = data.len().min(buf.len());
-        (&mut buf[0..max]).copy_from_slice(&data[0..max]);
-        let remain = if max < data.len() {
-            Some(data.split_off(max))
+        let amt = (&data[..]).read(buf).unwrap();
+
+        let remain = if amt < data.len() {
+            Some(data.split_off(amt))
         } else {
             None
         };
+
         self.h2_leftover_bytes = remain;
-        max
+
+        amt
     }
 
     fn poll_refill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {

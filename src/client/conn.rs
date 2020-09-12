@@ -16,6 +16,7 @@ use hreq_h2::client::SendRequest as H2SendRequest;
 use once_cell::sync::Lazy;
 use std::fmt;
 use std::future::Future;
+use std::io::Read;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -390,11 +391,11 @@ impl BodyBuf {
     /// Read from this buffer without dropping any data.
     fn read(&mut self, buf: &mut [u8]) -> usize {
         if let Some(vec) = &mut self.vec {
-            let max = buf.len().min(vec.len() - self.read_idx);
-            trace!("BodyBuf read: {}", max);
-            (&mut buf[0..max]).copy_from_slice(&vec[self.read_idx..(self.read_idx + max)]);
-            self.read_idx += max;
-            max
+            let amt = (&vec[self.read_idx..]).read(buf).unwrap();
+
+            self.read_idx += amt;
+
+            amt
         } else {
             0
         }
