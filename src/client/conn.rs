@@ -1,4 +1,4 @@
-use crate::body::BodyImpl;
+use crate::body_codec::BodyImpl;
 use crate::body_send::BodySender;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
