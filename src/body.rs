@@ -202,7 +202,7 @@ impl Body {
     ///     .call().block().unwrap();
     /// ```
     pub fn empty() -> Self {
-        Self::new(BodyImpl::RequestEmpty, Some(0)).ctype(CT_TEXT)
+        Self::new(BodyImpl::RequestEmpty, Some(0), true).ctype(CT_TEXT)
     }
 
     /// Creates a body from a `&str` by cloning the data.
@@ -398,7 +398,7 @@ impl Body {
         R: AsyncRead + Unpin + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
-        Self::new(BodyImpl::RequestAsyncRead(boxed), length).ctype(CT_BIN)
+        Self::new(BodyImpl::RequestAsyncRead(boxed), length, true).ctype(CT_BIN)
     }
 
     /// Creates a body from anything implementing the (blocking) `std::io::Read` trait.
@@ -418,12 +418,12 @@ impl Body {
         R: io::Read + Send + Sync + 'static,
     {
         let boxed = Box::new(reader);
-        Self::new(BodyImpl::RequestRead(boxed), length).ctype(CT_BIN)
+        Self::new(BodyImpl::RequestRead(boxed), length, true).ctype(CT_BIN)
     }
 
     /// Creates a new Body
-    pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>) -> Self {
-        let reader = BodyReader::new(bimpl);
+    pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>, prebuffer: bool) -> Self {
+        let reader = BodyReader::new(bimpl, prebuffer);
         let codec = BodyCodec::deferred(reader);
         Body {
             codec,
@@ -837,10 +837,10 @@ pub enum BodyImpl {
 }
 
 impl BodyReader {
-    fn new(imp: BodyImpl) -> Self {
+    fn new(imp: BodyImpl, prebuffer: bool) -> Self {
         BodyReader {
             imp,
-            prebuffer: true,
+            prebuffer,
             h2_leftover_bytes: None,
             buffer: Vec::with_capacity(START_BUF_SIZE),
             consumed: 0,

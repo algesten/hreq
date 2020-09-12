@@ -294,12 +294,12 @@ impl Future for ResponseFuture {
         match this {
             ResponseFuture::H1(f) => {
                 let (p, b) = ready!(Pin::new(f).poll(cx))?.into_parts();
-                let b = Body::new(BodyImpl::Http1(b), None);
+                let b = Body::new(BodyImpl::Http1(b), None, false);
                 Ok((p, b)).into()
             }
             ResponseFuture::H2(f) => {
                 let (p, b) = ready!(Pin::new(f).poll(cx))?.into_parts();
-                let b = Body::new(BodyImpl::Http2(b), None);
+                let b = Body::new(BodyImpl::Http2(b), None, false);
                 Ok((p, b)).into()
             }
         }

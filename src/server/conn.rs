@@ -41,7 +41,7 @@ where
 
                             let (parts, recv) = req.into_parts();
 
-                            let body = Body::new(BodyImpl::Http1(recv), None);
+                            let body = Body::new(BodyImpl::Http1(recv), None, false);
                             let send = SendResponse::H1(send);
 
                             return Some(Ok(Self::configure(
@@ -65,7 +65,7 @@ where
 
                             let (parts, recv) = req.into_parts();
 
-                            let body = Body::new(BodyImpl::Http2(recv), None);
+                            let body = Body::new(BodyImpl::Http2(recv), None, false);
                             let send = SendResponse::H2(send);
 
                             return Some(Ok(Self::configure(
