@@ -9,6 +9,7 @@ use crate::AsyncRuntime;
 use crate::Error;
 use encoding_rs::Encoding;
 use futures_util::future::poll_fn;
+use futures_util::io::AsyncReadExt;
 use futures_util::ready;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -549,8 +550,6 @@ impl Body {
             // content is fully buffered
             let mut buffer_into = Vec::with_capacity(amt);
 
-            use futures_util::io::AsyncReadExt;
-
             self.read_to_end(&mut buffer_into).await?;
 
             trace!("Fully prebuffered: {}", buffer_into.len());
@@ -628,18 +627,9 @@ impl Body {
     /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
     pub async fn read_to_vec(&mut self) -> Result<Vec<u8>, Error> {
         let mut vec = Vec::with_capacity(8192);
-        let mut idx = 0;
-        loop {
-            if idx == vec.len() {
-                vec.resize(idx + 8192, 0);
-            }
-            let amount = self.read(&mut vec[idx..]).await?;
-            if amount == 0 {
-                vec.resize(idx, 0);
-                break;
-            }
-            idx += amount;
-        }
+
+        self.read_to_end(&mut vec).await?;
+
         trace!("read_to_vec returning len: {}", vec.len());
         Ok(vec)
     }
