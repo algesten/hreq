@@ -821,7 +821,7 @@ impl AsyncBufRead for BodyCodec {
 
 pub struct BodyReader {
     imp: BodyImpl,
-    prebuffer: bool,
+    prebuffer_to: usize,
     buffer: Vec<u8>,
     consumed: usize,
     h2_leftover_bytes: Option<Bytes>,
@@ -840,7 +840,7 @@ impl BodyReader {
     fn new(imp: BodyImpl, prebuffer: bool) -> Self {
         BodyReader {
             imp,
-            prebuffer,
+            prebuffer_to: if prebuffer { MAX_BUF_SIZE } else { 0 },
             h2_leftover_bytes: None,
             buffer: Vec::with_capacity(START_BUF_SIZE),
             consumed: 0,
@@ -948,20 +948,28 @@ impl AsyncBufRead for BodyReader {
         this.buffer.truncate(0);
 
         loop {
+            let buffer_len = this.buffer.len();
+
             let read_enough =
-                // when prebuffering, we are reading until the buffer len() is at capacity.
-                this.prebuffer && this.buffer.len() == this.buffer.capacity()
+                // when prebuffering, we are reading until the buffer len() is as much as allowed.
+                this.prebuffer_to > 0 && buffer_len == this.prebuffer_to
                 // when not prebuffering, any content is enough.
-                || !this.prebuffer && this.unconsumed_len() > 0;
+                || this.prebuffer_to == 0 && this.buffer.len() > 0;
 
             if this.is_finished || read_enough {
                 // only first poll_fill_buf is prebuffering.
-                this.prebuffer = false;
+                this.prebuffer_to = 0;
 
                 return Ok(this.unconsumed()).into();
             }
 
-            let before_read_len = this.buffer.len();
+            // ensure there is spare capacity.
+            if buffer_len == this.buffer.capacity() {
+                let max = (this.buffer.capacity() * 2).min(MAX_BUF_SIZE);
+                trace!("Increase poll_fill_buf buffer to: {}", max);
+                let additional = max - this.buffer.capacity();
+                this.buffer.reserve(additional);
+            }
 
             // we resize down once we know how much read.
             unsafe { this.buffer.set_len(this.buffer.capacity()) };
@@ -969,7 +977,7 @@ impl AsyncBufRead for BodyReader {
             let x = {
                 // this is safe cause this.poll_read_underlying is not touching this.buffer
                 let buffer = &mut this.buffer as *mut Vec<u8>;
-                let buf = unsafe { &mut (*buffer)[before_read_len..] };
+                let buf = unsafe { &mut (*buffer)[buffer_len..] };
 
                 this.poll_read_underlying(cx, buf)
             };
@@ -982,7 +990,7 @@ impl AsyncBufRead for BodyReader {
             };
 
             // it's important this always happens to leave buffer in a safe state.
-            this.buffer.truncate(before_read_len + new_bytes);
+            this.buffer.truncate(buffer_len + new_bytes);
 
             // pending and error exit here
             ready!(x)?;
@@ -993,7 +1001,6 @@ impl AsyncBufRead for BodyReader {
         let this = self.get_mut();
 
         this.consumed += amt;
-        trace!("consumed ({}) {}/{}", amt, this.consumed, this.buffer.len());
 
         assert!(this.consumed <= this.buffer.len());
     }
