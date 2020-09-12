@@ -18,6 +18,7 @@ use serde::Serialize;
 use std::fmt;
 use std::future::Future;
 use std::io;
+use std::io::Read;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -166,7 +167,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
 /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
 pub struct Body {
-    codec: BufReader<BodyCodec>,
+    codec: BodyCodec,
     length: Option<u64>, // incoming length if given with reader
     content_typ: Option<&'static str>,
     override_source_enc: Option<&'static Encoding>,
@@ -423,7 +424,7 @@ impl Body {
     /// Creates a new Body
     pub(crate) fn new(bimpl: BodyImpl, length: Option<u64>) -> Self {
         let reader = BodyReader::new(bimpl);
-        let codec = BufReader::new(BodyCodec::deferred(reader));
+        let codec = BodyCodec::deferred(reader);
         Body {
             codec,
             length,
@@ -458,7 +459,7 @@ impl Body {
     /// Tells the length of the body _with content encoding_. This could
     /// take both gzip and charset into account, or just bail if we don't know.
     pub(crate) fn content_encoded_length(&self) -> Option<u64> {
-        if self.codec.get_ref().affects_content_size() || self.char_codec.is_some() {
+        if self.codec.affects_content_size() || self.char_codec.is_some() {
             // things like gzip will affect self.length
             None
         } else {
@@ -478,9 +479,9 @@ impl Body {
     /// Undo the effects of configure()
     #[cfg(feature = "server")]
     pub(crate) fn unconfigure(self) -> Self {
-        let reader = self.codec.into_inner().into_inner();
+        let reader = self.codec.into_inner();
         Body {
-            codec: BufReader::new(BodyCodec::Deferred(Some(reader))),
+            codec: BodyCodec::Deferred(Some(reader)),
             char_codec: None,
             ..self
         }
@@ -503,7 +504,7 @@ impl Body {
         self.deadline_fut = Some(params.deadline().delay_fut());
 
         let mut new_codec = None;
-        if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
+        if let BodyCodec::Deferred(reader) = &mut self.codec {
             if let Some(reader) = reader.take() {
                 let use_enc =
                     !is_incoming && params.content_encode || is_incoming && params.content_decode;
@@ -518,7 +519,7 @@ impl Body {
 
         if let Some(new_codec) = new_codec {
             // to avoid creating another BufReader
-            *self.codec.get_mut() = new_codec;
+            self.codec = new_codec;
         }
 
         let charset_config = if is_incoming {
@@ -549,10 +550,10 @@ impl Body {
     #[cfg(test)]
     #[allow(dead_code)]
     pub(crate) fn set_codec_pass(&mut self) {
-        if let BodyCodec::Deferred(reader) = self.codec.get_mut() {
+        if let BodyCodec::Deferred(reader) = &mut self.codec {
             if let Some(reader) = reader.take() {
                 let new_codec = BodyCodec::Pass(reader);
-                *self.codec.get_mut() = new_codec;
+                self.codec = new_codec;
             }
         }
     }
@@ -734,9 +735,9 @@ enum BodyCodec {
     Deferred(Option<BodyReader>),
     Pass(BodyReader),
     #[cfg(feature = "gzip")]
-    GzipDecoder(GzipDecoder<BufReader<BodyReader>>),
+    GzipDecoder(BufReader<GzipDecoder<BodyReader>>),
     #[cfg(feature = "gzip")]
-    GzipEncoder(GzipEncoder<BufReader<BodyReader>>),
+    GzipEncoder(BufReader<GzipEncoder<BodyReader>>),
 }
 
 impl BodyCodec {
@@ -762,13 +763,11 @@ impl BodyCodec {
             (None, _) => BodyCodec::Pass(reader),
             #[cfg(feature = "gzip")]
             (Some("gzip"), true) => {
-                let buf = BufReader::new(reader);
-                BodyCodec::GzipDecoder(GzipDecoder::new(buf))
+                BodyCodec::GzipDecoder(BufReader::new(GzipDecoder::new(reader)))
             }
             #[cfg(feature = "gzip")]
             (Some("gzip"), false) => {
-                let buf = BufReader::new(reader);
-                BodyCodec::GzipEncoder(GzipEncoder::new(buf))
+                BodyCodec::GzipEncoder(BufReader::new(GzipEncoder::new(reader)))
             }
             _ => {
                 warn!("Unknown content-encoding: {:?}", encoding);
@@ -800,9 +799,32 @@ impl BodyCodec {
     }
 }
 
+impl AsyncBufRead for BodyCodec {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<&[u8]>> {
+        match self.get_mut() {
+            BodyCodec::Deferred(_) => panic!("poll_fill_buf on Deferred"),
+            BodyCodec::Pass(r) => Pin::new(r).poll_fill_buf(cx),
+            BodyCodec::GzipDecoder(r) => Pin::new(r).poll_fill_buf(cx),
+            BodyCodec::GzipEncoder(r) => Pin::new(r).poll_fill_buf(cx),
+        }
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        match self.get_mut() {
+            BodyCodec::Deferred(_) => panic!("consume on Deferred"),
+            BodyCodec::Pass(r) => Pin::new(r).consume(amt),
+            BodyCodec::GzipDecoder(r) => Pin::new(r).consume(amt),
+            BodyCodec::GzipEncoder(r) => Pin::new(r).consume(amt),
+        }
+    }
+}
+
 pub struct BodyReader {
     imp: BodyImpl,
-    leftover_bytes: Option<Bytes>,
+    prebuffer: bool,
+    buffer: Vec<u8>,
+    consumed: usize,
+    h2_leftover_bytes: Option<Bytes>,
     is_finished: bool,
 }
 
@@ -818,7 +840,10 @@ impl BodyReader {
     fn new(imp: BodyImpl) -> Self {
         BodyReader {
             imp,
-            leftover_bytes: None,
+            prebuffer: true,
+            h2_leftover_bytes: None,
+            buffer: Vec::with_capacity(START_BUF_SIZE),
+            consumed: 0,
             is_finished: false,
         }
     }
@@ -830,36 +855,22 @@ impl BodyReader {
     //     }
     // }
 
-    // helper to shuffle Bytes into a &[u8] and handle the remains.
-    fn bytes_to_buf(&mut self, mut data: Bytes, buf: &mut [u8]) -> usize {
-        let max = data.len().min(buf.len());
-        (&mut buf[0..max]).copy_from_slice(&data[0..max]);
-        let remain = if max < data.len() {
-            Some(data.split_off(max))
-        } else {
-            None
-        };
-        self.leftover_bytes = remain;
-        max
-    }
-}
-
-impl AsyncRead for BodyReader {
-    fn poll_read(
-        self: Pin<&mut Self>,
+    fn poll_read_underlying(
+        &mut self,
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        let this = self.get_mut();
-        if this.is_finished {
+        if self.is_finished {
             return Ok(0).into();
         }
+
         // h2 streams might have leftovers to use up before reading any more.
-        if let Some(data) = this.leftover_bytes.take() {
-            let amount = this.bytes_to_buf(data, buf);
+        if let Some(data) = self.h2_leftover_bytes.take() {
+            let amount = self.h2_bytes_to_buf(data, buf);
             return Ok(amount).into();
         }
-        let read = match &mut this.imp {
+
+        let amount = match &mut self.imp {
             BodyImpl::RequestEmpty => 0,
             BodyImpl::RequestAsyncRead(reader) => ready!(Pin::new(reader).poll_read(cx, buf))?,
             BodyImpl::RequestRead(reader) => match reader.read(buf) {
@@ -886,16 +897,130 @@ impl AsyncRead for BodyReader {
                             e.into_io()
                                 .unwrap_or_else(|| io::Error::new(io::ErrorKind::Other, other))
                         })?;
-                    this.bytes_to_buf(data, buf)
+                    self.h2_bytes_to_buf(data, buf)
                 } else {
                     0
                 }
             }
         };
-        if read == 0 {
-            this.is_finished = true;
+
+        if amount == 0 {
+            self.is_finished = true;
         }
-        Ok(read).into()
+
+        Ok(amount).into()
+    }
+
+    // helper to shuffle Bytes into a &[u8] and handle the remains.
+    fn h2_bytes_to_buf(&mut self, mut data: Bytes, buf: &mut [u8]) -> usize {
+        let max = data.len().min(buf.len());
+        (&mut buf[0..max]).copy_from_slice(&data[0..max]);
+        let remain = if max < data.len() {
+            Some(data.split_off(max))
+        } else {
+            None
+        };
+        self.h2_leftover_bytes = remain;
+        max
+    }
+
+    fn unconsumed(&self) -> &[u8] {
+        &self.buffer[self.consumed..]
+    }
+
+    fn unconsumed_len(&self) -> usize {
+        self.buffer.len() - self.consumed
+    }
+}
+
+use futures_io::AsyncBufRead;
+
+impl AsyncBufRead for BodyReader {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<&[u8]>> {
+        let this = self.get_mut();
+
+        if this.unconsumed_len() > 0 {
+            return Ok(this.unconsumed()).into();
+        }
+
+        // reading resets the consume index.
+        this.consumed = 0;
+        this.buffer.truncate(0);
+
+        loop {
+            let read_enough =
+                // when prebuffering, we are reading until the buffer len() is at capacity.
+                this.prebuffer && this.buffer.len() == this.buffer.capacity()
+                // when not prebuffering, any content is enough.
+                || !this.prebuffer && this.unconsumed_len() > 0;
+
+            if this.is_finished || read_enough {
+                // only first poll_fill_buf is prebuffering.
+                this.prebuffer = false;
+
+                return Ok(this.unconsumed()).into();
+            }
+
+            let before_read_len = this.buffer.len();
+
+            // we resize down once we know how much read.
+            unsafe { this.buffer.set_len(this.buffer.capacity()) };
+
+            let x = {
+                // this is safe cause this.poll_read_underlying is not touching this.buffer
+                let buffer = &mut this.buffer as *mut Vec<u8>;
+                let buf = unsafe { &mut (*buffer)[before_read_len..] };
+
+                this.poll_read_underlying(cx, buf)
+            };
+
+            // how many new bytes were read into the buffer?
+            let new_bytes = if let Poll::Ready(Ok(amt)) = &x {
+                *amt
+            } else {
+                0
+            };
+
+            // it's important this always happens to leave buffer in a safe state.
+            this.buffer.truncate(before_read_len + new_bytes);
+
+            // pending and error exit here
+            ready!(x)?;
+        }
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        let this = self.get_mut();
+
+        this.consumed += amt;
+        trace!("consumed ({}) {}/{}", amt, this.consumed, this.buffer.len());
+
+        assert!(this.consumed <= this.buffer.len());
+    }
+}
+
+impl AsyncRead for BodyReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = self.get_mut();
+
+        if this.unconsumed_len() == 0 {
+            if this.is_finished {
+                return Ok(0).into();
+            } else {
+                // read more bytes into the inner buffer
+                ready!(Pin::new(&mut *this).poll_fill_buf(cx))?;
+            }
+        }
+
+        let amount = this.unconsumed().read(buf)?;
+
+        Pin::new(this).consume(amount);
+
+        Ok(amount).into()
     }
 }
 
@@ -1031,11 +1156,11 @@ impl fmt::Debug for BodyImpl {
 impl fmt::Debug for Body {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Body {{ reader: ")?;
-        match self.codec.get_ref().reader_ref() {
+        match self.codec.reader_ref() {
             Some(v) => write!(f, "{:?}", v),
             None => write!(f, "none"),
         }?;
-        write!(f, ", codec: {:?}", self.codec.get_ref())?;
+        write!(f, ", codec: {:?}", self.codec)?;
         if let Some(char_codec) = &self.char_codec {
             write!(f, ", char_codec: {:?}", char_codec)?;
         }
