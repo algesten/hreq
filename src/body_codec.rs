@@ -2,7 +2,6 @@ use crate::AsyncRead;
 use bytes::Bytes;
 use futures_io::AsyncBufRead;
 use futures_util::future::poll_fn;
-use futures_util::io::BufReader;
 use futures_util::ready;
 use hreq_h1::RecvStream as H1RecvStream;
 use hreq_h2::RecvStream as H2RecvStream;
@@ -14,6 +13,9 @@ use std::task::{Context, Poll};
 
 #[cfg(feature = "gzip")]
 use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
+
+#[cfg(feature = "gzip")]
+use futures_util::io::BufReader;
 
 const START_BUF_SIZE: usize = 16_384;
 const MAX_PREBUFFER: usize = 256 * 1024;
@@ -355,7 +357,9 @@ impl AsyncBufRead for BodyCodec {
         match self.get_mut() {
             BodyCodec::Deferred(_) => panic!("poll_fill_buf on Deferred"),
             BodyCodec::Pass(r) => Pin::new(r).poll_fill_buf(cx),
+            #[cfg(feature = "gzip")]
             BodyCodec::GzipDecoder(r) => Pin::new(r).poll_fill_buf(cx),
+            #[cfg(feature = "gzip")]
             BodyCodec::GzipEncoder(r) => Pin::new(r).poll_fill_buf(cx),
         }
     }
@@ -364,7 +368,9 @@ impl AsyncBufRead for BodyCodec {
         match self.get_mut() {
             BodyCodec::Deferred(_) => panic!("consume on Deferred"),
             BodyCodec::Pass(r) => Pin::new(r).consume(amt),
+            #[cfg(feature = "gzip")]
             BodyCodec::GzipDecoder(r) => Pin::new(r).consume(amt),
+            #[cfg(feature = "gzip")]
             BodyCodec::GzipEncoder(r) => Pin::new(r).consume(amt),
         }
     }
