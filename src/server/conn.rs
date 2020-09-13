@@ -16,6 +16,7 @@ use httpdate::fmt_http_date;
 use std::net::SocketAddr;
 use std::time::SystemTime;
 
+const START_BUF_SIZE: usize = 16_384;
 const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 
 pub(crate) enum Connection<Stream> {
@@ -160,7 +161,7 @@ impl SendResponse {
         let mut body_send = self.do_send(res).await?;
 
         // this buffer should probably be less than h2 window size
-        let mut buf = UninitBuf::new(MAX_BUF_SIZE);
+        let mut buf = UninitBuf::with_capacity(START_BUF_SIZE, MAX_BUF_SIZE);
 
         if !body.is_definitely_no_body() {
             loop {

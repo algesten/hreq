@@ -708,9 +708,10 @@ impl Body {
     /// resp.body_mut().read_and_discard();
     /// ```
     pub async fn read_and_discard(&mut self) -> Result<(), Error> {
+        const START_BUF_SIZE: usize = 16_384;
         const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 
-        let mut buf = UninitBuf::new(MAX_BUF_SIZE);
+        let mut buf = UninitBuf::with_capacity(START_BUF_SIZE, MAX_BUF_SIZE);
         loop {
             buf.clear();
 

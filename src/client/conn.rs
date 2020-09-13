@@ -24,6 +24,7 @@ use std::task::Context;
 use std::task::Poll;
 
 static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+const START_BUF_SIZE: usize = 16_384;
 const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 
 pub enum ProtocolImpl {
@@ -181,7 +182,7 @@ async fn send_req(
     let mut early_response = None;
 
     // this buffer should probably be less than h2 window size
-    let mut buf = UninitBuf::new(MAX_BUF_SIZE);
+    let mut buf = UninitBuf::with_capacity(START_BUF_SIZE, MAX_BUF_SIZE);
 
     if !no_body {
         let mut use_body_buf = true;

@@ -27,10 +27,12 @@ pub struct UninitBuf {
 }
 
 impl UninitBuf {
-    pub fn new(max_size: usize) -> Self {
-        Self::with_capacity(16_384, max_size)
-    }
-
+    /// Creates a new UinitBuf with a startin capacity and a max_size.
+    ///
+    /// The max_size is not absolute. Vec::reserve() will exponentially grow the
+    /// capacity, and we only stop expanding once capacity is >= max_size.
+    /// It _seems_ like this is currently in powers of 2, but that's
+    /// probably not guaranteed.
     pub fn with_capacity(capacity: usize, max_size: usize) -> Self {
         UninitBuf {
             max_size,
