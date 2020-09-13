@@ -2,6 +2,7 @@ use crate::body_codec::BodyImpl;
 use crate::body_send::BodySender;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
+use crate::uninit::UninitBuf;
 use crate::uri_ext::HostPort;
 use crate::uri_ext::MethodExt;
 use crate::Body;
@@ -177,8 +178,6 @@ async fn send_req(
 
     let (mut res_fut, mut body_send) = proto.do_send(req, no_body).await?;
     let mut early_response = None;
-
-    use crate::uninit::UninitBuf;
 
     // this buffer should probably be less than h2 window size
     let mut buf = UninitBuf::new();

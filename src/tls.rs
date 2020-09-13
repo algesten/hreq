@@ -183,9 +183,6 @@ impl<S: Stream, E: Session + Unpin + 'static> TlsStream<S, E> {
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
                 if !self.tls.is_handshaking() {
-                    let rest = self.plaintext.split_off(self.plaintext_idx);
-                    self.plaintext = rest;
-                    self.plaintext_idx = 0;
                     let _ = self.tls.read_to_end(&mut self.plaintext)?;
                 }
 
@@ -263,15 +260,21 @@ impl<S: Stream, E: Session + Unpin + 'static> AsyncRead for TlsStream<S, E> {
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
 
-        ready!(this.poll_tls(cx, true))?;
+        if this.plaintext_left() == 0 {
+            ready!(this.poll_tls(cx, true))?;
+        }
 
         let idx = this.plaintext_idx;
+        let amt = (&this.plaintext[idx..]).read(buf)?;
 
-        let amount = (&this.plaintext[idx..]).read(buf)?;
+        this.plaintext_idx += amt;
 
-        this.plaintext_idx += amount;
+        if this.plaintext_idx == this.plaintext.len() {
+            this.plaintext_idx = 0;
+            this.plaintext.clear();
+        }
 
-        Ok(amount).into()
+        Ok(amt).into()
     }
 }
 

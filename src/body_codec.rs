@@ -299,7 +299,7 @@ impl AsyncRead for BodyReader {
                 return Ok(0).into();
             } else {
                 // read more bytes into the inner buffer
-                ready!(Pin::new(&mut *this).poll_fill_buf(cx))?;
+                ready!(this.poll_refill_buf(cx))?;
             }
         }
 
