@@ -48,6 +48,7 @@ fn tls_req_body100mb_with_size() -> Result<(), hreq::Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header_as("content-length"), Some(SIZE));
             assert_eq!(req.header("content-encoding"), None);
+            assert_eq!(req.header("content-type"), Some("application/octet-stream"));
 
             let v = req.into_body().read_to_vec().await.unwrap();
             assert_eq!(v.len(), SIZE as usize);
