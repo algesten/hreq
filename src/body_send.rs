@@ -34,9 +34,13 @@ impl BodySender {
                         }
 
                         // wait for capacity to increase
-                        poll_fn(|cx| s.poll_capacity(cx))
+                        let capacity = poll_fn(|cx| s.poll_capacity(cx))
                             .await
                             .ok_or_else(|| Error::Proto("Stream gone before capacity".into()))??;
+
+                        if capacity > 0 {
+                            break capacity;
+                        }
                     };
 
                     // h2::SendStream lacks a sync or async function that allows us

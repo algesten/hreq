@@ -19,6 +19,7 @@ use async_compression::futures::bufread::{GzipDecoder, GzipEncoder};
 use futures_util::io::BufReader;
 
 const START_BUF_SIZE: usize = 16_384;
+const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 const MAX_PREBUFFER: usize = 256 * 1024;
 
 #[allow(clippy::large_enum_variant)]
@@ -133,7 +134,7 @@ impl BodyReader {
             imp,
             prebuffer_to: if prebuffer { MAX_PREBUFFER } else { 0 },
             h2_leftover_bytes: None,
-            buffer: UninitBuf::with_capacity(START_BUF_SIZE),
+            buffer: UninitBuf::with_capacity(START_BUF_SIZE, MAX_BUF_SIZE),
             consumed: 0,
             is_finished: false,
         }

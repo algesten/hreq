@@ -16,7 +16,7 @@ impl<S> Peekable<S> {
     pub fn new(stream: S, capacity: usize) -> Self {
         Peekable {
             stream,
-            buf: UninitBuf::with_capacity(capacity),
+            buf: UninitBuf::with_capacity(capacity, capacity),
             idx: 0,
             finished: false,
         }

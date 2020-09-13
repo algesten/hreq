@@ -20,18 +20,20 @@ use std::task::Poll;
 /// ever allow a safe length of bytes out.
 #[derive(Debug, Clone)]
 pub struct UninitBuf {
+    max_size: usize,
     buf: Vec<u8>,
     len: usize,
     expand: bool,
 }
 
 impl UninitBuf {
-    pub fn new() -> Self {
-        Self::with_capacity(16_384)
+    pub fn new(max_size: usize) -> Self {
+        Self::with_capacity(16_384, max_size)
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize, max_size: usize) -> Self {
         UninitBuf {
+            max_size,
             buf: Vec::with_capacity(capacity),
             len: 0,
             expand: false,
@@ -124,7 +126,13 @@ impl UninitBuf {
         // we must reserve if there is no headroom to read into.
         let reserve_needed = self.len == self.buf.capacity();
 
-        if self.expand || reserve_needed {
+        let is_at_max = self.buf.capacity() >= self.max_size;
+
+        if reserve_needed && is_at_max {
+            panic!("No headroom and buf is at max capacity");
+        }
+
+        if !is_at_max && (self.expand || reserve_needed) {
             // Vec has this wonderful built in features that grows exponentially
             // every time we need to re-allocate.
             self.buf.reserve(32);

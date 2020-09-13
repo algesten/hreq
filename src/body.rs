@@ -708,8 +708,12 @@ impl Body {
     /// resp.body_mut().read_and_discard();
     /// ```
     pub async fn read_and_discard(&mut self) -> Result<(), Error> {
-        let mut buf = UninitBuf::new();
+        const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
+
+        let mut buf = UninitBuf::new(MAX_BUF_SIZE);
         loop {
+            buf.clear();
+
             let read = buf.read_from_async(self).await?;
 
             if read == 0 {
