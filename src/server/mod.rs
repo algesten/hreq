@@ -577,7 +577,18 @@ where
 
         // Make h1 or h2 abstraction over the connection.
         let mut conn = if proto == Protocol::Http2 {
-            let h2conn = hreq_h2::server::handshake(stream).await?;
+            const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024;
+            const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024;
+            const DEFAULT_MAX_FRAME_SIZE: u32 = 16 * 1024;
+
+            let mut builder = hreq_h2::server::Builder::default();
+            builder
+                .initial_window_size(DEFAULT_STREAM_WINDOW)
+                .initial_connection_window_size(DEFAULT_CONN_WINDOW)
+                .max_frame_size(DEFAULT_MAX_FRAME_SIZE);
+
+            let h2conn = builder.handshake(stream).await?;
+
             Connection::H2(h2conn)
         } else {
             let h1conn = hreq_h1::server::handshake(stream);

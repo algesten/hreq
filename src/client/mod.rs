@@ -67,7 +67,18 @@ pub(crate) async fn open_stream(
     proto: Protocol,
 ) -> Result<Connection, Error> {
     if proto == Protocol::Http2 {
-        let (h2, h2conn) = hreq_h2::client::handshake(stream).await?;
+        const DEFAULT_CONN_WINDOW: u32 = 5 * 1024 * 1024;
+        const DEFAULT_STREAM_WINDOW: u32 = 2 * 1024 * 1024;
+        const DEFAULT_MAX_FRAME_SIZE: u32 = 16 * 1024;
+
+        let mut builder = hreq_h2::client::Builder::default();
+        builder
+            .initial_window_size(DEFAULT_STREAM_WINDOW)
+            .initial_connection_window_size(DEFAULT_CONN_WINDOW)
+            .max_frame_size(DEFAULT_MAX_FRAME_SIZE);
+
+        let (h2, h2conn) = builder.handshake(stream).await?;
+
         // drives the connection independently of the h2 api surface.
         let conn_task = async {
             if let Err(err) = h2conn.await {
