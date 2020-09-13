@@ -130,6 +130,8 @@ fn req_body1kb_with_size() -> Result<(), Error> {
 
 #[test]
 fn req_body100mb_no_size() -> Result<(), Error> {
+    common::setup_logger();
+
     const SIZE: u64 = 100 * 1024 * 1024;
     let mut server = Server::new();
 
@@ -139,17 +141,28 @@ fn req_body100mb_no_size() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), Some("chunked"));
             assert_eq!(req.header("content-length"), None);
             assert_eq!(req.header("content-encoding"), None);
+
             let v = req.into_body().read_to_vec().await.unwrap();
             assert_eq!(v.len(), SIZE as usize);
+
             "ok"
         });
 
+    let (handle, addr) = server.listen(0).block()?;
+
+    let uri = format!("http://localhost:{}/path", addr.port());
+
     let curs = io::Cursor::new(vec![42; SIZE as usize]);
 
-    let req = http::Request::post("/path").body(Body::from_sync_read(curs, None))?;
-    let res = server.handle(req).block()?;
+    let req = http::Request::post(uri)
+        // .force_http2(true)
+        .body(Body::from_sync_read(curs, None))?;
+
+    let res = req.send().block()?;
 
     assert_eq!(res.status(), 200);
+
+    handle.shutdown().block();
     Ok(())
 }
 

@@ -24,17 +24,19 @@ impl BodySender {
                         break;
                     }
 
-                    s.reserve_capacity(buf.len());
+                    let actual_capacity = loop {
+                        s.reserve_capacity(buf.len());
 
-                    let actual_capacity = {
-                        let cur = s.capacity();
-                        if cur > 0 {
-                            cur
-                        } else {
-                            poll_fn(|cx| s.poll_capacity(cx)).await.ok_or_else(|| {
-                                Error::Proto("Stream gone before capacity".into())
-                            })??
+                        let capacity = s.capacity();
+
+                        if capacity > 0 {
+                            break capacity;
                         }
+
+                        // wait for capacity to increase
+                        poll_fn(|cx| s.poll_capacity(cx))
+                            .await
+                            .ok_or_else(|| Error::Proto("Stream gone before capacity".into()))??;
                     };
 
                     // h2::SendStream lacks a sync or async function that allows us
