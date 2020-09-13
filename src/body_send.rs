@@ -43,11 +43,7 @@ impl BodySender {
                         }
                     };
 
-                    // h2::SendStream lacks a sync or async function that allows us
-                    // to send borrowed data. This copy is unfortunate.
-                    //
-                    // TODO: See if h2 could handle some kind of variant that takes a &mut [u8].
-                    let data = Bytes::copy_from_slice(&buf[..actual_capacity]);
+                    let data = (&buf[..actual_capacity]).to_vec().into();
 
                     s.send_data(data, false)?;
 
