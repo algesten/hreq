@@ -19,7 +19,7 @@ fn sane_headers() -> Result<(), Error> {
             assert_eq!(req.header("content-encoding"), None);
             assert_eq!(
                 req.header("user-agent").map(|s| s.to_string()),
-                Some(format!("rust/hreq/{}", hreq::VERSION))
+                Some(format!("hreq/{}", hreq::VERSION))
             );
             assert_eq!(req.header("accept"), Some("*/*"));
             assert_eq!(req.version(), http::Version::HTTP_11);

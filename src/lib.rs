@@ -383,7 +383,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use once_cell::sync::Lazy;
 
-pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| format!("rust/hreq/{}", crate::VERSION));
+// Can't have two slashes here apparently.
+// https://tools.ietf.org/html/rfc7230#section-3.2.6
+pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| format!("hreq/{}", crate::VERSION));
 
 pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncSeek, AsyncWrite};
 
