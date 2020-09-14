@@ -65,7 +65,7 @@ mime_guess = "2"
 chardetng = "0.1"
 
 # keep in sync with time brought in by cookie
-time = "=0.2.16"
+time = "=0.2.19"
 
 ## async-std
 async-std-lib = { package = "async-std", version = "1", optional = true }
