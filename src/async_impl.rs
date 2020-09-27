@@ -16,7 +16,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 #[cfg(feature = "tokio")]
-use tokio_lib::runtime::Runtime as TokioRuntime;
+use tokio::runtime::Runtime as TokioRuntime;
 
 #[cfg(not(feature = "tokio"))]
 pub(crate) struct TokioRuntime;
@@ -82,7 +82,7 @@ pub enum AsyncRuntime {
     /// ```
     /// use hreq::AsyncRuntime;
     /// // normally: use tokio::runtime::Builder;
-    /// use tokio_lib::runtime::Builder;
+    /// use tokio::runtime::Builder;
     ///
     /// let runtime = Builder::new()
     ///   .enable_io()
@@ -109,11 +109,11 @@ enum Inner {
 #[allow(dead_code)]
 pub(crate) enum Listener {
     #[cfg(feature = "async-std")]
-    AsyncStd(async_std_lib::net::TcpListener),
+    AsyncStd(::async_std::net::TcpListener),
     #[cfg(not(feature = "async-std"))]
     AsyncStd(FakeListener),
     #[cfg(feature = "tokio")]
-    Tokio(tokio_lib::net::TcpListener),
+    Tokio(tokio::net::TcpListener),
     #[cfg(not(feature = "tokio"))]
     Tokio(FakeListener),
 }
@@ -153,7 +153,14 @@ static CURRENT_RUNTIME: Lazy<Mutex<Inner>> = Lazy::new(|| {
     let rt = if cfg!(feature = "async-std") {
         Inner::AsyncStd
     } else if cfg!(feature = "tokio") {
-        async_tokio::use_default();
+        #[cfg(feature = "tokio")]
+        if tokio::runtime::Handle::try_current().ok().is_some() {
+            trace!("Shared tokio runtime detected");
+            async_tokio::use_shared();
+        } else {
+            async_tokio::use_default();
+        }
+
         Inner::TokioSingle
     } else {
         panic!("No default async runtime. Use feature 'tokio' or 'async-std'");
@@ -287,39 +294,37 @@ mod async_std {
 #[allow(unused)]
 pub(crate) mod async_std {
     use super::*;
-    use async_std_lib::net::TcpStream;
-    use async_std_lib::task;
 
     pub(crate) async fn connect_tcp(addr: &str) -> Result<impl Stream, Error> {
-        Ok(TcpStream::connect(addr).await?)
+        Ok(::async_std::net::TcpStream::connect(addr).await?)
     }
 
     pub(crate) async fn timeout(duration: Duration) {
-        async_std_lib::future::timeout(duration, never()).await.ok();
+        ::async_std::future::timeout(duration, never()).await.ok();
     }
 
     pub(crate) fn spawn<T>(task: T)
     where
         T: Future + Send + 'static,
     {
-        async_std_lib::task::spawn(async move {
+        ::async_std::task::spawn(async move {
             task.await;
         });
     }
 
     pub(crate) fn block_on<F: Future>(task: F) -> F::Output {
-        task::block_on(task)
+        ::async_std::task::block_on(task)
     }
 
     #[cfg(feature = "server")]
     pub(crate) async fn listen(addr: SocketAddr) -> Result<Listener, Error> {
-        use async_std_lib::net::TcpListener;
+        use ::async_std::net::TcpListener;
         let listener = TcpListener::bind(addr).await?;
         Ok(Listener::AsyncStd(listener))
     }
 
     pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncReadSeek {
-        let file: async_std_lib::fs::File = file.into();
+        let file: ::async_std::fs::File = file.into();
         file
     }
 }
@@ -368,9 +373,9 @@ pub(crate) mod async_tokio {
     use super::*;
     use crate::tokio::from_tokio;
     use std::sync::Mutex;
-    use tokio_lib::net::TcpStream;
-    use tokio_lib::runtime::Builder;
-    use tokio_lib::runtime::Handle;
+    use tokio::net::TcpStream;
+    use tokio::runtime::Builder;
+    use tokio::runtime::Handle;
 
     static RUNTIME: Lazy<Mutex<Option<TokioRuntime>>> = Lazy::new(|| Mutex::new(None));
     static HANDLE: Lazy<Mutex<Option<Handle>>> = Lazy::new(|| Mutex::new(None));
@@ -434,7 +439,7 @@ pub(crate) mod async_tokio {
         Ok(from_tokio(TcpStream::connect(addr).await?))
     }
     pub(crate) async fn timeout(duration: Duration) {
-        tokio_lib::time::delay_for(duration).await;
+        tokio::time::delay_for(duration).await;
     }
     pub(crate) fn spawn<T>(task: T)
     where
@@ -456,13 +461,13 @@ pub(crate) mod async_tokio {
 
     #[cfg(feature = "server")]
     pub(crate) async fn listen(addr: SocketAddr) -> Result<Listener, Error> {
-        use tokio_lib::net::TcpListener;
+        use tokio::net::TcpListener;
         let listener = TcpListener::bind(addr).await?;
         Ok(Listener::Tokio(listener))
     }
 
     pub(crate) fn file_to_reader(file: std::fs::File) -> impl AsyncReadSeek {
-        let file = tokio_lib::fs::File::from_std(file);
+        let file = tokio::fs::File::from_std(file);
         from_tokio(file)
     }
 }

@@ -4,7 +4,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use tokio_lib::io::{
+use tokio::io::{
     AsyncRead as TokioAsyncRead, AsyncSeek as TokioAsyncSeek, AsyncWrite as TokioAsyncWrite,
 };
 
