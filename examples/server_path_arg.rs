@@ -1,11 +1,12 @@
 use hreq::prelude::*;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let mut server = Server::new();
 
     server.at("/hello/:name").get(hello_there);
 
-    let (shut, addr) = server.listen(0).block().expect("Failed to listen");
+    let (shut, addr) = server.listen(0).await.expect("Failed to listen");
 
     println!("Listening to: {}", addr);
 
@@ -15,7 +16,7 @@ fn main() {
 
     let response = http::Request::get(url)
         .call()
-        .block()
+        .await
         .expect("Failed to call");
 
     println!("Response status: {}", response.status());
@@ -23,12 +24,12 @@ fn main() {
     let body = response
         .into_body()
         .read_to_string()
-        .block()
+        .await
         .expect("Failed to read body");
 
     println!("Body:\n{}", body);
 
-    shut.shutdown().block()
+    shut.shutdown().await
 }
 
 async fn hello_there(req: http::Request<Body>) -> String {

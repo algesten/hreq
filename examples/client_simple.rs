@@ -1,9 +1,10 @@
 use hreq::prelude::*;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let response = http::Request::get("https://httpbin.org/get")
         .call()
-        .block()
+        .await
         .expect("Failed to call");
 
     println!("Content-Type: {:?}", response.header("content-type"));
@@ -11,7 +12,7 @@ fn main() {
     let body = response
         .into_body()
         .read_to_string()
-        .block()
+        .await
         .expect("Failed to read body");
 
     println!("{}", body);

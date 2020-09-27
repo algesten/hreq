@@ -1,6 +1,7 @@
 use hreq::prelude::*;
 
-pub fn main() {
+#[tokio::main]
+async fn main() {
     let mut server = Server::new();
 
     server
@@ -17,9 +18,10 @@ pub fn main() {
         .key_path("tests/data/tls_cert.pem")
         .cert_path("tests/data/tls_cert.pem");
 
-    let (handle, addr) = server.listen_tls(3000, config).block().unwrap();
+    let (handle, addr) = server.listen_tls(3000, config).await.unwrap();
 
     println!("TLS listening to: {}", addr);
+    println!("Try this: curl -k https://localhost:{}/ -d\"Sweet\"", addr.port());
 
-    handle.keep_alive().block();
+    handle.keep_alive().await;
 }
