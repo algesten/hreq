@@ -438,11 +438,11 @@ impl Agent {
                     // retry?
                     retries -= 1;
                     if retries == 0 || !is_idempotent || !err.is_retryable() {
-                        trace!("Abort with error, {}", err);
+                        trace!("Abort with error: {}", err);
                         break Err(err);
                     }
 
-                    trace!("Retrying on error, {}", err);
+                    trace!("Retrying on error: {}", err);
                 }
             }
             // retry backoff

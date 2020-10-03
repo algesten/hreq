@@ -520,13 +520,15 @@ where
             {
                 use crate::either::Either;
                 use crate::tls::wrap_tls_server;
+                use crate::async_impl::FakeStream;
+
                 if let Some(config) = config {
                     // wrap in tls
                     let (tls, proto) = wrap_tls_server(tcp, config).await?;
                     (Either::A(tls), proto)
                 } else {
                     // tls feature on, but not using it.
-                    (Either::B(tcp), Protocol::Unknown)
+                    (Either::<_, _, FakeStream>::B(tcp), Protocol::Unknown)
                 }
             }
 

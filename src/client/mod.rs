@@ -37,6 +37,8 @@ pub(crate) async fn connect(
         {
             use crate::either::Either;
             use crate::tls::wrap_tls_client;
+            use crate::async_impl::FakeStream;
+
             if host_port.is_tls() {
                 // wrap in tls
                 let (tls, proto) =
@@ -44,7 +46,10 @@ pub(crate) async fn connect(
                 (Either::A(tls), proto)
             } else {
                 // use tcp
-                (Either::B(tcp), Protocol::Unknown)
+                (
+                    Either::<_, _, FakeStream>::B(tcp),
+                    Protocol::Unknown,
+                )
             }
         }
 
