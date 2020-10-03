@@ -148,6 +148,7 @@
 //! [`Clone`]: https://doc.rust-lang.org/std/clone/trait.Clone.html
 //! [`path_param()`]: trait.ServerRequestExt.html#tymethod.path_param
 
+use crate::async_impl::FakeStream;
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;
 use crate::proto::Protocol;
@@ -526,7 +527,7 @@ where
                     (Either::A(tls), proto)
                 } else {
                     // tls feature on, but not using it.
-                    (Either::B(tcp), Protocol::Unknown)
+                    (Either::<_, _, FakeStream>::B(tcp), Protocol::Unknown)
                 }
             }
 

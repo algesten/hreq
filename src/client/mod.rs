@@ -1,3 +1,4 @@
+use crate::async_impl::FakeStream;
 use crate::AsyncRuntime;
 use crate::Error;
 use crate::Stream;
@@ -44,7 +45,10 @@ pub(crate) async fn connect(
                 (Either::A(tls), proto)
             } else {
                 // use tcp
-                (Either::B(tcp), Protocol::Unknown)
+                (
+                    Either::<_, _, FakeStream>::B(tcp),
+                    Protocol::Unknown,
+                )
             }
         }
 
