@@ -69,7 +69,7 @@
 //! http crate as well as avoids furthering the confusion of having
 //! multiple types with the same name.
 //!
-//! # Blocking and async
+//! # Async and blocking
 //!
 //! Rust's async story is fantastic, but not every situation requires
 //! async.  hreq "fakes" being a blocking library by default having a
@@ -77,11 +77,17 @@
 //! call that is placed where we expect an `.await` in an async
 //! situation.
 //!
+//! # All examples using `.block()` can be `.await`
+//!
+//! It's anticipated hreq is often used in an async context, however
+//! rustdoc doesn't let us document the code that way. Everywhere
+//! the doc does `.block()`, you can switch that out for `.await`.
+//!
 //! ```
 //! use hreq::prelude::*;
 //!
 //! let res = Request::get("https://httpbin.org/get")
-//!     .call().block();
+//!     .call().block(); // this can be .await in async
 //! ```
 //!
 //! ## Why?
