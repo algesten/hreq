@@ -21,7 +21,10 @@ async fn main() {
     let (handle, addr) = server.listen_tls(3000, config).await.unwrap();
 
     println!("TLS listening to: {}", addr);
-    println!("Try this: curl -k https://localhost:{}/ -d\"Sweet\"", addr.port());
+    println!(
+        "Try this: curl -k https://localhost:{}/ -d\"Sweet\"",
+        addr.port()
+    );
 
     handle.keep_alive().await;
 }
