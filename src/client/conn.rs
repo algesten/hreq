@@ -17,6 +17,7 @@ use hreq_h2::client::SendRequest as H2SendRequest;
 use once_cell::sync::Lazy;
 use std::fmt;
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -27,41 +28,33 @@ static ID_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 const START_BUF_SIZE: usize = 16_384;
 const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 
-pub enum ProtocolImpl {
-    Http1(H1SendRequest),
-    Http2(H2SendRequest<Bytes>),
-}
-
-impl fmt::Display for ProtocolImpl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ProtocolImpl::Http1(_) => write!(f, "Http1"),
-            ProtocolImpl::Http2(_) => write!(f, "Http2"),
-        }
-    }
-}
-
 // #[derive(Clone)]
 pub struct Connection {
     id: usize,
     host_port: HostPort<'static>,
-    proto: ProtocolImpl,
+    inner: Inner,
     unfinished_reqs: Arc<()>,
 }
 
-impl PartialEq for Connection {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
+enum Inner {
+    H1(H1SendRequest),
+    H2(H2SendRequest<Bytes>),
 }
-impl Eq for Connection {}
 
 impl Connection {
-    pub(crate) fn new(host_port: HostPort<'static>, proto: ProtocolImpl) -> Self {
+    pub(crate) fn new_h1(host_port: HostPort<'static>, conn: H1SendRequest) -> Self {
+        Self::new(host_port, Inner::H1(conn))
+    }
+
+    pub(crate) fn new_h2(host_port: HostPort<'static>, conn: H2SendRequest<Bytes>) -> Self {
+        Self::new(host_port, Inner::H2(conn))
+    }
+
+    fn new(host_port: HostPort<'static>, inner: Inner) -> Self {
         Connection {
             id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             host_port,
-            proto,
+            inner: inner,
             unfinished_reqs: Arc::new(()),
         }
     }
@@ -75,9 +68,9 @@ impl Connection {
     }
 
     pub(crate) fn is_http2(&self) -> bool {
-        match self.proto {
-            ProtocolImpl::Http1(_) => false,
-            ProtocolImpl::Http2(_) => true,
+        match self.inner {
+            Inner::H1(_) => false,
+            Inner::H2(_) => true,
         }
     }
 
@@ -114,7 +107,7 @@ impl Connection {
 
         trace!(
             "{} {} {} {} {:?}",
-            self.proto,
+            self.inner,
             self.host_port(),
             req.method(),
             req.uri(),
@@ -123,7 +116,7 @@ impl Connection {
 
         // send request against a deadline
         let response = deadline
-            .race(send_req(req, body_buffer, &self.proto, unfin))
+            .race(send_req(req, body_buffer, &self.inner, unfin))
             .await?;
 
         Ok(response)
@@ -168,7 +161,7 @@ pub(crate) fn configure_request(parts: &mut http::request::Parts, body: &Body, i
 async fn send_req(
     req: http::Request<Body>,
     body_buffer: &mut BodyBuf,
-    proto: &ProtocolImpl,
+    proto: &Inner,
     unfin: Arc<()>,
 ) -> Result<http::Response<Body>, Error> {
     let params = req.extensions().get::<HReqParams>().unwrap().clone();
@@ -257,7 +250,7 @@ async fn send_req(
     Ok(http::Response::from_parts(parts, res_body))
 }
 
-impl ProtocolImpl {
+impl Inner {
     // Generalised sending of request
     async fn do_send(
         &self,
@@ -265,12 +258,12 @@ impl ProtocolImpl {
         no_body: bool,
     ) -> Result<(ResponseFuture, BodySender), Error> {
         Ok(match self {
-            ProtocolImpl::Http1(h1) => {
+            Inner::H1(h1) => {
                 let mut h1 = h1.clone();
                 let (fut, send_body) = h1.send_request(req, no_body)?;
                 (ResponseFuture::H1(fut), BodySender::H1(send_body))
             }
-            ProtocolImpl::Http2(h2) => {
+            Inner::H2(h2) => {
                 let mut h2 = h2.clone().ready().await?;
                 let (fut, send_body) = h2.send_request(req, no_body)?;
                 (ResponseFuture::H2(fut), BodySender::H2(send_body))
@@ -401,8 +394,6 @@ impl BodyBuf {
     }
 }
 
-use std::io;
-
 impl io::Read for BodyBuf {
     /// Read from this buffer without dropping any data.
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -417,3 +408,19 @@ impl io::Read for BodyBuf {
         })
     }
 }
+
+impl fmt::Display for Inner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Inner::H1(_) => write!(f, "Http1"),
+            Inner::H2(_) => write!(f, "Http2"),
+        }
+    }
+}
+
+impl PartialEq for Connection {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Connection {}

@@ -19,7 +19,11 @@ use std::time::SystemTime;
 const START_BUF_SIZE: usize = 16_384;
 const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 
-pub(crate) enum Connection<Stream> {
+pub(crate) struct Connection<Stream> {
+    inner: Inner<Stream>,
+}
+
+enum Inner<Stream> {
     H1(H1Connection<Stream>),
     H2(H2Connection<Stream, Bytes>),
 }
@@ -28,13 +32,25 @@ impl<Stream> Connection<Stream>
 where
     Stream: AsyncRead + AsyncWrite + Unpin,
 {
+    pub fn new_h1(conn: H1Connection<Stream>) -> Self {
+        Connection {
+            inner: Inner::H1(conn),
+        }
+    }
+
+    pub fn new_h2(conn: H2Connection<Stream, Bytes>) -> Self {
+        Connection {
+            inner: Inner::H2(conn),
+        }
+    }
+
     pub async fn accept(
         &mut self,
         local_addr: SocketAddr,
         remote_addr: SocketAddr,
     ) -> Option<Result<(http::Request<Body>, SendResponse), Error>> {
-        match self {
-            Connection::H1(c) => {
+        match &mut self.inner {
+            Inner::H1(c) => {
                 if let Some(next) = c.accept().await {
                     match next {
                         Err(e) => return Some(Err(e.into())),
@@ -58,7 +74,7 @@ where
                 }
                 trace!("H1 accept incoming end");
             }
-            Connection::H2(c) => {
+            Inner::H2(c) => {
                 if let Some(next) = c.accept().await {
                     match next {
                         Err(e) => return Some(Err(e.into())),

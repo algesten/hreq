@@ -518,9 +518,9 @@ where
         let (stream, alpn_proto) = {
             #[cfg(feature = "tls")]
             {
+                use crate::async_impl::FakeStream;
                 use crate::either::Either;
                 use crate::tls::wrap_tls_server;
-                use crate::async_impl::FakeStream;
 
                 if let Some(config) = config {
                     // wrap in tls
@@ -591,10 +591,10 @@ where
 
             let h2conn = builder.handshake(stream).await?;
 
-            Connection::H2(h2conn)
+            Connection::new_h2(h2conn)
         } else {
             let h1conn = hreq_h1::server::handshake(stream);
-            Connection::H1(h1conn)
+            Connection::new_h1(h1conn)
         };
 
         debug!("Handshake done, waiting for requests: {}", remote_addr);

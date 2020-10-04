@@ -19,7 +19,6 @@ pub(crate) use conn::configure_request;
 use crate::proto::Protocol;
 use crate::uri_ext::HostPort;
 use conn::Connection;
-use conn::ProtocolImpl;
 
 pub(crate) async fn connect(
     host_port: &HostPort<'_>,
@@ -35,9 +34,9 @@ pub(crate) async fn connect(
 
         #[cfg(feature = "tls")]
         {
+            use crate::async_impl::FakeStream;
             use crate::either::Either;
             use crate::tls::wrap_tls_client;
-            use crate::async_impl::FakeStream;
 
             if host_port.is_tls() {
                 // wrap in tls
@@ -46,10 +45,7 @@ pub(crate) async fn connect(
                 (Either::A(tls), proto)
             } else {
                 // use tcp
-                (
-                    Either::<_, _, FakeStream>::B(tcp),
-                    Protocol::Unknown,
-                )
+                (Either::<_, _, FakeStream>::B(tcp), Protocol::Unknown)
             }
         }
 
@@ -92,7 +88,7 @@ pub(crate) async fn open_stream(
             }
         };
         AsyncRuntime::spawn(conn_task);
-        Ok(Connection::new(host_port, ProtocolImpl::Http2(h2)))
+        Ok(Connection::new_h2(host_port, h2))
     } else {
         let (h1, h1conn) = h1::client::handshake(stream);
         // drives the connection independently of the h1 api surface
@@ -103,6 +99,6 @@ pub(crate) async fn open_stream(
             }
         };
         AsyncRuntime::spawn(conn_task);
-        Ok(Connection::new(host_port, ProtocolImpl::Http1(h1)))
+        Ok(Connection::new_h1(host_port, h1))
     }
 }
