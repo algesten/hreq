@@ -99,23 +99,16 @@ impl UriExt for http::Uri {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum HostPort<'a> {
-    Shared {
-        host: &'a str,
-        port: u16,
-        is_tls: bool,
-    },
-    Owned {
-        host: String,
-        port: u16,
-        is_tls: bool,
-    },
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostPort {
+    host: String,
+    port: u16,
+    is_tls: bool,
 }
 
-impl HostPort<'static> {
+impl HostPort {
     pub fn new(host: &str, port: u16, tls: bool) -> Self {
-        HostPort::Owned {
+        HostPort {
             host: host.to_string(),
             port,
             is_tls: tls,
@@ -123,8 +116,8 @@ impl HostPort<'static> {
     }
 }
 
-impl<'a> HostPort<'a> {
-    pub fn from_uri(uri: &'a http::Uri) -> Result<Self, Error> {
+impl HostPort {
+    pub fn from_uri(uri: &http::Uri) -> Result<Self, Error> {
         let scheme = uri
             .scheme()
             .unwrap_or_else(|| {
@@ -144,8 +137,8 @@ impl<'a> HostPort<'a> {
             _ => return Err(Error::User(format!("Unknown URI scheme: {}", uri))),
         };
 
-        let hostport = HostPort::Shared {
-            host: authority.host(),
+        let hostport = HostPort {
+            host: authority.host().to_string(),
             port: authority.port_u16().unwrap_or(scheme_default),
             is_tls: scheme == "https",
         };
@@ -154,47 +147,17 @@ impl<'a> HostPort<'a> {
     }
 
     pub fn host(&self) -> &str {
-        match self {
-            HostPort::Shared { host, .. } => host,
-            HostPort::Owned { host, .. } => &host,
-        }
-    }
-
-    pub fn port(&self) -> u16 {
-        match self {
-            HostPort::Shared { port, .. } => *port,
-            HostPort::Owned { port, .. } => *port,
-        }
+        &self.host
     }
 
     pub fn is_tls(&self) -> bool {
-        match self {
-            HostPort::Shared { is_tls, .. } => *is_tls,
-            HostPort::Owned { is_tls, .. } => *is_tls,
-        }
-    }
-
-    pub fn to_owned(&self) -> HostPort<'static> {
-        HostPort::Owned {
-            host: self.host().to_string(),
-            port: self.port(),
-            is_tls: self.is_tls(),
-        }
+        self.is_tls
     }
 }
 
-impl<'a> fmt::Display for HostPort<'a> {
+impl fmt::Display for HostPort {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            HostPort::Shared { host, port, .. } => write!(f, "{}:{}", host, port),
-            HostPort::Owned { host, port, .. } => write!(f, "{}:{}", host, port),
-        }
-    }
-}
-
-impl<'a> std::cmp::PartialEq<HostPort<'a>> for HostPort<'a> {
-    fn eq(&self, other: &HostPort<'a>) -> bool {
-        self.host() == other.host() && self.port() == other.port()
+        write!(f, "{}:{}", self.host, self.port)
     }
 }
 

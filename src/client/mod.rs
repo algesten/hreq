@@ -21,7 +21,7 @@ use crate::uri_ext::HostPort;
 use conn::Connection;
 
 pub(crate) async fn connect(
-    host_port: &HostPort<'_>,
+    host_port: &HostPort,
     force_http2: bool,
     #[allow(unused_variables)] tls_disable_verify: bool,
 ) -> Result<Connection, Error> {
@@ -63,7 +63,7 @@ pub(crate) async fn connect(
 }
 
 pub(crate) async fn open_stream(
-    host_port: HostPort<'static>,
+    host_port: HostPort,
     stream: impl Stream,
     proto: Protocol,
 ) -> Result<Connection, Error> {

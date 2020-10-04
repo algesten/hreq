@@ -22,7 +22,7 @@ pub(crate) struct HReqParams {
     pub content_encode: bool,
     pub content_decode: bool,
     pub redirect_body_buffer: usize,
-    pub with_override: Option<Arc<HostPort<'static>>>,
+    pub with_override: Option<Arc<HostPort>>,
     pub tls_disable_verify: bool,
     pub prebuffer: bool,
 }

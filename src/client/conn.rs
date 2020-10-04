@@ -31,7 +31,7 @@ const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 // #[derive(Clone)]
 pub struct Connection {
     id: usize,
-    host_port: HostPort<'static>,
+    host_port: HostPort,
     inner: Inner,
     unfinished_reqs: Arc<()>,
 }
@@ -42,15 +42,15 @@ enum Inner {
 }
 
 impl Connection {
-    pub(crate) fn new_h1(host_port: HostPort<'static>, conn: H1SendRequest) -> Self {
+    pub(crate) fn new_h1(host_port: HostPort, conn: H1SendRequest) -> Self {
         Self::new(host_port, Inner::H1(conn))
     }
 
-    pub(crate) fn new_h2(host_port: HostPort<'static>, conn: H2SendRequest<Bytes>) -> Self {
+    pub(crate) fn new_h2(host_port: HostPort, conn: H2SendRequest<Bytes>) -> Self {
         Self::new(host_port, Inner::H2(conn))
     }
 
-    fn new(host_port: HostPort<'static>, inner: Inner) -> Self {
+    fn new(host_port: HostPort, inner: Inner) -> Self {
         Connection {
             id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             host_port,
@@ -63,7 +63,7 @@ impl Connection {
         self.id
     }
 
-    pub(crate) fn host_port(&self) -> &HostPort<'static> {
+    pub(crate) fn host_port(&self) -> &HostPort {
         &self.host_port
     }
 
