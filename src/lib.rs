@@ -360,6 +360,7 @@ mod block_ext;
 mod body;
 mod body_codec;
 mod body_send;
+mod bw;
 mod charset;
 mod client;
 mod deadline;

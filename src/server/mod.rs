@@ -148,6 +148,7 @@
 //! [`Clone`]: https://doc.rust-lang.org/std/clone/trait.Clone.html
 //! [`path_param()`]: trait.ServerRequestExt.html#tymethod.path_param
 
+use crate::bw::BandwidthMonitor;
 use crate::params::resolve_hreq_params;
 use crate::params::HReqParams;
 use crate::proto::Protocol;
@@ -589,9 +590,12 @@ where
                 .initial_connection_window_size(DEFAULT_CONN_WINDOW)
                 .max_frame_size(DEFAULT_MAX_FRAME_SIZE);
 
-            let h2conn = builder.handshake(stream).await?;
+            let mut h2conn = builder.handshake(stream).await?;
 
-            Connection::new_h2(h2conn)
+            let pinger = h2conn.ping_pong().expect("ping_pong of h2 conn");
+            let bw = BandwidthMonitor::new(pinger);
+
+            Connection::new_h2(h2conn, bw)
         } else {
             let h1conn = hreq_h1::server::handshake(stream);
             Connection::new_h1(h1conn)

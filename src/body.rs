@@ -1,6 +1,7 @@
 //! Request and response body. content-encoding, charset etc.
 
 use crate::body_codec::{BodyCodec, BodyImpl};
+use crate::bw::BandwidthMonitor;
 use crate::charset::CharCodec;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
@@ -170,6 +171,7 @@ pub struct Body {
     deadline_fut: Option<Pin<Box<dyn Future<Output = io::Error> + Send + Sync>>>,
     unfinished_recs: Option<Arc<()>>,
     prebuffered: Option<Cursor<Vec<u8>>>,
+    bw: Option<BandwidthMonitor>,
 }
 
 impl Body {
@@ -429,6 +431,7 @@ impl Body {
             deadline_fut: None,
             unfinished_recs: None,
             prebuffered: None,
+            bw: None,
         }
     }
 
@@ -439,6 +442,10 @@ impl Body {
 
     pub(crate) fn set_unfinished_recs(&mut self, unfin: Arc<()>) {
         self.unfinished_recs = Some(unfin);
+    }
+
+    pub(crate) fn set_bw_monitor(&mut self, bw: Option<BandwidthMonitor>) {
+        self.bw = bw;
     }
 
     /// Tells if we know _for sure_, there is no body.
@@ -501,9 +508,13 @@ impl Body {
 
         let mut new_codec = None;
         if let BodyCodec::Deferred(reader) = &mut self.codec {
-            if let Some(reader) = reader.take() {
+            if let Some(mut reader) = reader.take() {
+                // pass bw monitor on to reader where the counting actually happens.
+                reader.set_bw_monitor(self.bw.clone());
+
                 let use_enc =
                     !is_incoming && params.content_encode || is_incoming && params.content_decode;
+
                 new_codec = if use_enc {
                     let encoding = headers.get_str("content-encoding");
                     Some(BodyCodec::from_encoding(reader, encoding, is_incoming))

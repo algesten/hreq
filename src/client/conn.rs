@@ -1,5 +1,6 @@
 use crate::body_codec::BodyImpl;
 use crate::body_send::BodySender;
+use crate::bw::BandwidthMonitor;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
 use crate::uninit::UninitBuf;
@@ -34,6 +35,7 @@ pub struct Connection {
     host_port: HostPort,
     inner: Inner,
     unfinished_reqs: Arc<()>,
+    bw: Option<BandwidthMonitor>,
 }
 
 enum Inner {
@@ -43,19 +45,24 @@ enum Inner {
 
 impl Connection {
     pub(crate) fn new_h1(host_port: HostPort, conn: H1SendRequest) -> Self {
-        Self::new(host_port, Inner::H1(conn))
+        Self::new(host_port, Inner::H1(conn), None)
     }
 
-    pub(crate) fn new_h2(host_port: HostPort, conn: H2SendRequest<Bytes>) -> Self {
-        Self::new(host_port, Inner::H2(conn))
+    pub(crate) fn new_h2(
+        host_port: HostPort,
+        conn: H2SendRequest<Bytes>,
+        bw: BandwidthMonitor,
+    ) -> Self {
+        Self::new(host_port, Inner::H2(conn), Some(bw))
     }
 
-    fn new(host_port: HostPort, inner: Inner) -> Self {
+    fn new(host_port: HostPort, inner: Inner, bw: Option<BandwidthMonitor>) -> Self {
         Connection {
             id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             host_port,
             inner: inner,
             unfinished_reqs: Arc::new(()),
+            bw,
         }
     }
 
@@ -114,9 +121,12 @@ impl Connection {
             req.headers()
         );
 
+        // every request gets their own copy to track received bytes
+        let bw = self.bw.clone();
+
         // send request against a deadline
         let response = deadline
-            .race(send_req(req, body_buffer, &self.inner, unfin))
+            .race(send_req(req, body_buffer, &self.inner, unfin, bw))
             .await?;
 
         Ok(response)
@@ -163,6 +173,7 @@ async fn send_req(
     body_buffer: &mut BodyBuf,
     proto: &Inner,
     unfin: Arc<()>,
+    bw: Option<BandwidthMonitor>,
 ) -> Result<http::Response<Body>, Error> {
     let params = req.extensions().get::<HReqParams>().unwrap().clone();
 
@@ -245,6 +256,7 @@ async fn send_req(
 
     parts.extensions.insert(params.clone());
     res_body.set_unfinished_recs(unfin);
+    res_body.set_bw_monitor(bw);
     res_body.configure(&params, &parts.headers, true);
 
     Ok(http::Response::from_parts(parts, res_body))

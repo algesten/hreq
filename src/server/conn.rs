@@ -1,6 +1,7 @@
 use crate::body::Body;
 use crate::body_codec::BodyImpl;
 use crate::body_send::BodySender;
+use crate::bw::BandwidthMonitor;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
 use crate::uninit::UninitBuf;
@@ -8,12 +9,15 @@ use crate::Error;
 use crate::AGENT_IDENT;
 use crate::{AsyncRead, AsyncWrite};
 use bytes::Bytes;
+use futures_util::future::poll_fn;
 use hreq_h1::server::Connection as H1Connection;
 use hreq_h1::server::SendResponse as H1SendResponse;
 use hreq_h2::server::Connection as H2Connection;
 use hreq_h2::server::SendResponse as H2SendResponse;
 use httpdate::fmt_http_date;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::Poll;
 use std::time::SystemTime;
 
 const START_BUF_SIZE: usize = 16_384;
@@ -21,6 +25,7 @@ const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
 
 pub(crate) struct Connection<Stream> {
     inner: Inner<Stream>,
+    bw: Option<BandwidthMonitor>,
 }
 
 enum Inner<Stream> {
@@ -35,12 +40,14 @@ where
     pub fn new_h1(conn: H1Connection<Stream>) -> Self {
         Connection {
             inner: Inner::H1(conn),
+            bw: None,
         }
     }
 
-    pub fn new_h2(conn: H2Connection<Stream, Bytes>) -> Self {
+    pub fn new_h2(conn: H2Connection<Stream, Bytes>, bw: BandwidthMonitor) -> Self {
         Connection {
             inner: Inner::H2(conn),
+            bw: Some(bw),
         }
     }
 
@@ -49,6 +56,9 @@ where
         local_addr: SocketAddr,
         remote_addr: SocketAddr,
     ) -> Option<Result<(http::Request<Body>, SendResponse), Error>> {
+        // cheap clone, either None or a Arc<Mutex<_>>
+        let bw_acc = self.bw.clone();
+
         match &mut self.inner {
             Inner::H1(c) => {
                 if let Some(next) = c.accept().await {
@@ -68,6 +78,7 @@ where
                                 local_addr,
                                 remote_addr,
                                 send,
+                                None,
                             )));
                         }
                     }
@@ -75,7 +86,21 @@ where
                 trace!("H1 accept incoming end");
             }
             Inner::H2(c) => {
-                if let Some(next) = c.accept().await {
+                let mut bw_acc = bw_acc.expect("h2 requires bandwidth monitor");
+
+                let bw_req = bw_acc.clone();
+
+                // piggy-back the bandwidth monitor on accepting requests from connection
+                let accept_and_bw = poll_fn(move |cx| {
+                    if let Poll::Ready(window_size) = bw_acc.poll_window_update(cx) {
+                        trace!("Update h2 window size: {}", window_size);
+                        c.set_target_window_size(window_size);
+                        c.set_initial_window_size(window_size)?;
+                    };
+                    Pin::new(&mut *c).poll_accept(cx)
+                });
+
+                if let Some(next) = accept_and_bw.await {
                     match next {
                         Err(e) => return Some(Err(e.into())),
                         Ok(v) => {
@@ -92,6 +117,7 @@ where
                                 local_addr,
                                 remote_addr,
                                 send,
+                                Some(bw_req),
                             )));
                         }
                     }
@@ -108,6 +134,7 @@ where
         local_addr: SocketAddr,
         remote_addr: SocketAddr,
         send: SendResponse,
+        bw: Option<BandwidthMonitor>,
     ) -> (http::Request<Body>, SendResponse) {
         // Instantiate new HReqParams that will follow the request and response through.
         let mut hreq_params = HReqParams::new();
@@ -117,6 +144,7 @@ where
 
         parts.extensions.insert(hreq_params.clone());
 
+        body.set_bw_monitor(bw);
         body.configure(&hreq_params, &parts.headers, true);
 
         (http::Request::from_parts(parts, body), send)

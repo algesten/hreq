@@ -16,9 +16,14 @@ pub use reqb_ext::RequestBuilderExt;
 #[cfg(feature = "server")]
 pub(crate) use conn::configure_request;
 
+use crate::bw::BandwidthMonitor;
 use crate::proto::Protocol;
 use crate::uri_ext::HostPort;
 use conn::Connection;
+use futures_util::future::poll_fn;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll;
 
 pub(crate) async fn connect(
     host_port: &HostPort,
@@ -78,17 +83,34 @@ pub(crate) async fn open_stream(
             .initial_connection_window_size(DEFAULT_CONN_WINDOW)
             .max_frame_size(DEFAULT_MAX_FRAME_SIZE);
 
-        let (h2, h2conn) = builder.handshake(stream).await?;
+        let (h2, mut h2conn) = builder.handshake(stream).await?;
+
+        let pinger = h2conn.ping_pong().expect("Take ping_pong of h2conn");
+        let bw = BandwidthMonitor::new(pinger);
+
+        let mut bw_conn = bw.clone();
+
+        // piggy-back the bandwidth monitor on polling the connection
+        let conn_and_bw = poll_fn(move |cx| {
+            if let Poll::Ready(window_size) = bw_conn.poll_window_update(cx) {
+                trace!("Update h2 window size: {}", window_size);
+                h2conn.set_target_window_size(window_size);
+                h2conn.set_initial_window_size(window_size)?;
+            };
+            Pin::new(&mut h2conn).poll(cx)
+        });
 
         // drives the connection independently of the h2 api surface.
         let conn_task = async {
-            if let Err(err) = h2conn.await {
+            if let Err(err) = conn_and_bw.await {
                 // this is expected to happen when the connection disconnects
                 trace!("Error in connection: {:?}", err);
             }
         };
+
         AsyncRuntime::spawn(conn_task);
-        Ok(Connection::new_h2(host_port, h2))
+
+        Ok(Connection::new_h2(host_port, h2, bw))
     } else {
         let (h1, h1conn) = h1::client::handshake(stream);
         // drives the connection independently of the h1 api surface

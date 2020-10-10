@@ -1,3 +1,4 @@
+use crate::bw::BandwidthMonitor;
 use crate::uninit::UninitBuf;
 use crate::AsyncRead;
 use bytes::Bytes;
@@ -118,6 +119,7 @@ pub struct BodyReader {
     consumed: usize,
     h2_leftover_bytes: Option<H2BytesReader>,
     is_finished: bool,
+    bw: Option<BandwidthMonitor>,
 }
 
 pub(crate) enum BodyImpl {
@@ -137,7 +139,12 @@ impl BodyReader {
             buffer: UninitBuf::with_capacity(START_BUF_SIZE, MAX_BUF_SIZE),
             consumed: 0,
             is_finished: false,
+            bw: None,
         }
+    }
+
+    pub(crate) fn set_bw_monitor(&mut self, bw: Option<BandwidthMonitor>) {
+        self.bw = bw;
     }
 
     /// Fills the internal buffer from the underlying reader. If prebuffer_to is > 0 will
@@ -222,6 +229,10 @@ impl BodyReader {
 
         if amount == 0 {
             self.is_finished = true;
+        }
+
+        if let Some(bw) = &self.bw {
+            bw.append_read_bytes(amount);
         }
 
         Ok(amount).into()
