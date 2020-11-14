@@ -14,6 +14,9 @@ pub struct CharCodec {
     is_end: bool,
 }
 
+// CharCodec should be pub(crate), but we expose it to the fuzz testing, so
+// we allow missing docs cause it's not actually part of public API.
+#[allow(missing_docs)]
 impl CharCodec {
     pub fn new(from: &'static Encoding, to: &'static Encoding) -> CharCodec {
         CharCodec {
