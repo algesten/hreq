@@ -86,7 +86,7 @@ the doc does `.block()`, you can switch that out for `.await`.
 use hreq::prelude::*;
 
 let res = Request::get("https://httpbin.org/get")
-    .call().block();
+    .call().block(); // this can be .await in async
 ```
 
 ### Why?
