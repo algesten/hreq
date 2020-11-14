@@ -442,3 +442,34 @@ impl<Z: AsyncRead + AsyncWrite + Unpin + Send + 'static> Stream for Z {}
 
 pub(crate) trait AsyncReadSeek: AsyncRead + AsyncSeek {}
 impl<Z: AsyncRead + AsyncSeek> AsyncReadSeek for Z {}
+
+#[cfg(test)]
+mod test {
+    /// Not actually a test, but ensure we uphold Send for our core objects.
+    #[allow(unused)]
+    async fn ensure_send_sync() {
+        use super::prelude::*;
+        fn ensure_send(_v: impl Send) {}
+        fn ensure_sync(_v: impl Sync) {}
+
+        let body = Body::empty();
+        ensure_send(body);
+        let body = Body::empty();
+        ensure_sync(body);
+
+        let req = http::Request::get("http://foo.com");
+        ensure_send(req);
+        let req = http::Request::get("http://foo.com");
+        ensure_sync(req);
+
+        let req_fut = http::Request::get("http://foo.com").call();
+        ensure_send(req_fut);
+        // RequestFuture is not Sync. A request being dispatched should
+        // be considered "owned" by a single thread.
+
+        let resp = http::Request::get("http://foo.com").call().await;
+        ensure_send(resp);
+        let resp = http::Request::get("http://foo.com").call().await;
+        ensure_sync(resp);
+    }
+}

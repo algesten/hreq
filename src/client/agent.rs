@@ -489,12 +489,12 @@ impl fmt::Debug for Agent {
 ///
 /// Instances should be `.await` or `.block()`.
 pub struct ResponseFuture {
-    req: Box<dyn Future<Output = Result<http::Response<Body>, Error>>>,
+    req: Box<dyn Future<Output = Result<http::Response<Body>, Error>> + Send>,
 }
 
 impl ResponseFuture {
     pub(crate) fn new(
-        t: impl Future<Output = Result<http::Response<Body>, Error>> + 'static,
+        t: impl Future<Output = Result<http::Response<Body>, Error>> + Send + 'static,
     ) -> Self {
         ResponseFuture { req: Box::new(t) }
     }
