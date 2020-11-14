@@ -295,11 +295,9 @@
 //! See the [`server module doc`] for more details.
 //!
 //! ```no_run
-//! // ignore this example if not feature server
-//! #[cfg(feature = "server")] {
-//!
+//! # // ignore this example if not feature server
+//! # #[cfg(feature = "server")] {
 //! use hreq::prelude::*;
-//!
 //!
 //! async fn start_server() {
 //!     let mut server = Server::new();
@@ -313,8 +311,7 @@
 //!     let name = req.path_param("name").unwrap();
 //!     format!("Hello there {}!\n", name)
 //! }
-//!
-//! }
+//! # }
 //! ```
 //!
 //! # Capabilities

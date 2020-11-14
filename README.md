@@ -294,11 +294,7 @@ can route requests, use middleware, handle state and serve TLS.
 See the [`server module doc`] for more details.
 
 ```rust
-// ignore this example if not feature server
-#[cfg(feature = "server")] {
-
 use hreq::prelude::*;
-
 
 async fn start_server() {
     let mut server = Server::new();
@@ -311,8 +307,6 @@ async fn start_server() {
 async fn hello_there(req: http::Request<Body>) -> String {
     let name = req.path_param("name").unwrap();
     format!("Hello there {}!\n", name)
-}
-
 }
 ```
 
