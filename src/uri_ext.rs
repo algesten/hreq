@@ -146,6 +146,7 @@ impl HostPort {
         Ok(hostport)
     }
 
+    #[cfg(feature = "tls")]
     pub fn host(&self) -> &str {
         &self.host
     }
