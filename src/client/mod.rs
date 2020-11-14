@@ -39,7 +39,6 @@ pub(crate) async fn connect(
 
         #[cfg(feature = "tls")]
         {
-            use crate::async_impl::FakeStream;
             use crate::either::Either;
             use crate::tls::wrap_tls_client;
 
@@ -50,7 +49,7 @@ pub(crate) async fn connect(
                 (Either::A(tls), proto)
             } else {
                 // use tcp
-                (Either::<_, _, FakeStream>::B(tcp), Protocol::Unknown)
+                (Either::B(tcp), Protocol::Unknown)
             }
         }
 

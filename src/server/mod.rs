@@ -519,7 +519,6 @@ where
         let (stream, alpn_proto) = {
             #[cfg(feature = "tls")]
             {
-                use crate::async_impl::FakeStream;
                 use crate::either::Either;
                 use crate::tls::wrap_tls_server;
 
@@ -529,7 +528,7 @@ where
                     (Either::A(tls), proto)
                 } else {
                     // tls feature on, but not using it.
-                    (Either::<_, _, FakeStream>::B(tcp), Protocol::Unknown)
+                    (Either::B(tcp), Protocol::Unknown)
                 }
             }
 

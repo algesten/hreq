@@ -17,7 +17,6 @@ all-features = true
 [features]
 default = [
     "tokio",
-#    "smol",
 #    "async-std",
     "gzip",
     "tls",
@@ -69,9 +68,6 @@ async-std = { version = "1", optional = true }
 
 ## tokio
 tokio = { version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time", "fs"], optional = true }
-
-## smol
-smol = { version = "*", optional = true }
 
 ## gzip
 async-compression = { version = "0.3", default-features = false, features = ["gzip", "futures-bufread"], optional = true }

@@ -85,7 +85,7 @@ fn missing_scheme() {
     common::setup_logger();
 
     // defaults to http
-    let res = Request::get("httpbin.org").call().block();
+    let res = Request::get("google.com").call().block();
 
     assert!(res.is_ok());
 }
