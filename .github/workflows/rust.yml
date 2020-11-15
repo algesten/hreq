@@ -9,8 +9,8 @@ jobs:
     strategy:
       matrix:
         runtime:
-          - tokio
-          # - async-std
+          # - tokio
+          - async-std
         server:
           - ""
           - "server"
