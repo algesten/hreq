@@ -27,6 +27,7 @@ jobs:
     env:
       RUST_BACKTRACE: "1"
       RUSTFLAGS: "-D dead_code -D unused-variables -D unused"
+      TEST_LOG: "1"
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust
