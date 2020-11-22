@@ -202,7 +202,12 @@ impl AsyncRuntime {
     pub fn make_default(self) {
         let mut current = CURRENT_RUNTIME.lock().unwrap();
 
-        trace!("Set runtime: {:?}", self);
+        trace!(
+            "Set runtime: {:?}, num_cpu: {}, num_physical_cpu: {}",
+            self,
+            num_cpus::get(),
+            num_cpus::get_physical()
+        );
 
         let inner = self.into_inner();
         *current = inner;

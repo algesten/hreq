@@ -51,6 +51,7 @@ hreq-h2 = { version = "0.2.7" }
 http = "0.2"
 httparse = "1"
 httpdate = "0.3.2"
+num_cpus = "*"
 once_cell = "1"
 publicsuffix = { default-features = false, version = "1.5.4" }
 qstring = "0.7"
