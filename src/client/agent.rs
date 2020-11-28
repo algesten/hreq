@@ -363,7 +363,7 @@ impl Agent {
                     // We only handle redirections with Location header.
                     fn is_handled_redirect(status: http::StatusCode) -> bool {
                         match status.as_u16() {
-                            301 | 302 | 307 | 308 => true,
+                            301 | 302 | 303 | 307 | 308 => true,
                             _ => false,
                         }
                     }
