@@ -16,14 +16,10 @@ all-features = true
 
 [features]
 default = [
-    "tokio",
-#    "async-std",
     "gzip",
     "tls",
     "server"
 ]
-# tokio
-# async-std
 gzip = [
     "async-compression",
 ]
@@ -40,14 +36,14 @@ server = [
 ]
 
 [dependencies]
-bytes = "0.5"
+bytes = "1"
 cookie = { version = "0.14", default-features = false, features = ["percent-encode"] }
 encoding_rs = "0.8"
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
 hreq-h1 = { version = "0.3.8" }
-hreq-h2 = { version = "0.2.7" }
+h2 = { version = "0.3" }
 http = "0.2"
 httparse = "1"
 httpdate = "0.3.2"
@@ -63,11 +59,9 @@ chardetng = "0.1"
 # keep in sync with time brought in by cookie
 time = "0.2"
 
-## async-std
-async-std = { version = "1", optional = true }
-
 ## tokio
-tokio = { version = "0.2", default-features = false, features = ["rt-core", "tcp", "dns", "time", "fs"], optional = true }
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "net", "fs", "time"] }
+tokio-util = { version = "0.6", default-features = false, features = ["compat"] }
 
 ## gzip
 async-compression = { version = "0.3", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
@@ -86,4 +80,4 @@ serde_derive = "1"
 rand = "0.7"
 env_logger = "0.7" # 0.7 needed for pretty_env_logger 0.4
 pretty_env_logger = "0.4"
-tokio = { package = "tokio", version = "0.2", default-features = false, features = ["full"] }
+tokio = { version = "1", default-features = false, features = ["macros"] }

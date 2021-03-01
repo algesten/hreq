@@ -10,15 +10,16 @@ use crate::AGENT_IDENT;
 use crate::{AsyncRead, AsyncWrite};
 use bytes::Bytes;
 use futures_util::future::poll_fn;
+use h2::server::Connection as H2Connection;
+use h2::server::SendResponse as H2SendResponse;
 use hreq_h1::server::Connection as H1Connection;
 use hreq_h1::server::SendResponse as H1SendResponse;
-use hreq_h2::server::Connection as H2Connection;
-use hreq_h2::server::SendResponse as H2SendResponse;
 use httpdate::fmt_http_date;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
+use tokio_util::compat::Compat;
 
 const START_BUF_SIZE: usize = 16_384;
 const MAX_BUF_SIZE: usize = 2 * 1024 * 1024;
@@ -30,7 +31,7 @@ pub(crate) struct Connection<Stream> {
 
 enum Inner<Stream> {
     H1(H1Connection<Stream>),
-    H2(H2Connection<Stream, Bytes>),
+    H2(H2Connection<Compat<Stream>, Bytes>),
 }
 
 impl<Stream> Connection<Stream>
@@ -44,7 +45,7 @@ where
         }
     }
 
-    pub fn new_h2(conn: H2Connection<Stream, Bytes>, bw: BandwidthMonitor) -> Self {
+    pub fn new_h2(conn: H2Connection<Compat<Stream>, Bytes>, bw: BandwidthMonitor) -> Self {
         Connection {
             inner: Inner::H2(conn),
             bw: Some(bw),

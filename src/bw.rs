@@ -15,7 +15,7 @@
 //!   3d. If bdp is over 2/3 max, set new max to bdp and update windows.
 
 use futures_util::ready;
-use hreq_h2::{Ping, PingPong};
+use h2::{Ping, PingPong};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};

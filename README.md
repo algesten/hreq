@@ -71,7 +71,7 @@ multiple types with the same name.
 ## Async and blocking
 
 Rust's async story is fantastic, but not every situation requires
-async.  hreq "fakes" being a blocking library by default having a
+async. hreq "fakes" being a blocking library by default having a
 very minimal tokio runtime ([`rt-core`]) combined with a `.block()`
 call that is placed where we expect an `.await` in an async
 situation.
@@ -95,7 +95,7 @@ hreq is async through-and-through and ultimately relies on an
 async variant of [`TcpStream`] for it to function. Because the
 TCP socket is one of those things that is tightly coupled to
 the async event loop, `TcpStream` in turn needs to be provided
-by the runtime (tokio or async-std)
+by the runtime (tokio)
 
 There are talks of rust providing a simple single threaded
 executor as part of the std lib. This only solves half of the
@@ -106,8 +106,6 @@ problem since `TcpStream` is coupled with the runtime.
 The async runtime is "pluggable" and comes in some different
 flavors.
 
-  * `AsyncStd`. Requires the feature `async-std`. Supports
-    `.block()`.
   * `TokioSingle`. The default option. A minimal tokio `rt-core`
     which executes calls in one single thread. It does nothing
     until the current thread blocks on a future using `.block()`.
@@ -119,6 +117,14 @@ flavors.
     "handed over" to hreq.
 
 How to configure the options is explained in [`AsyncRuntime`].
+
+### Tokio only
+
+This project set out with the ambition to be runtime agnostic, specifically
+to also support async-std (and/or smol), however in practice that was not
+a viable route due to it taking too much work to maintain. Rust is likely
+to eventually provide a pluggable runtime mechanic, in which case this
+library will try to be agnostic again.
 
 ## Agent, redirect and retries
 
@@ -317,7 +323,6 @@ async fn hello_there(req: http::Request<Body>) -> String {
 * HTTP/2 and HTTP/1.1
 * TLS (https)
 * Timeout for entire request and reading the response
-* Switchable async runtime (`tokio`, `async-std`)
 * Single threaded by default
 * Built as an extension to `http` crate.
 * Query parameter manipulation in request builder

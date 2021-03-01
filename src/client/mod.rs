@@ -2,6 +2,7 @@ use crate::AsyncRuntime;
 use crate::Error;
 use crate::Stream;
 use hreq_h1 as h1;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 mod agent;
 mod conn;
@@ -76,13 +77,13 @@ pub(crate) async fn open_stream(
         const DEFAULT_STREAM_WINDOW: u32 = 2 * 1024 * 1024;
         const DEFAULT_MAX_FRAME_SIZE: u32 = 16 * 1024;
 
-        let mut builder = hreq_h2::client::Builder::default();
+        let mut builder = h2::client::Builder::default();
         builder
             .initial_window_size(DEFAULT_STREAM_WINDOW)
             .initial_connection_window_size(DEFAULT_CONN_WINDOW)
             .max_frame_size(DEFAULT_MAX_FRAME_SIZE);
 
-        let (h2, mut h2conn) = builder.handshake(stream).await?;
+        let (h2, mut h2conn) = builder.handshake(stream.compat()).await?;
 
         let pinger = h2conn.ping_pong().expect("Take ping_pong of h2conn");
         let bw = BandwidthMonitor::new(pinger);

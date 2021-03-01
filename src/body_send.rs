@@ -1,8 +1,8 @@
 use crate::Error;
 use bytes::Bytes;
 use futures_util::future::poll_fn;
+use h2;
 use hreq_h1 as h1;
-use hreq_h2 as h2;
 
 /// Generalisation over sending body data.
 pub(crate) enum BodySender {

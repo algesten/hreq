@@ -59,15 +59,11 @@ use std::future::Future;
 /// reach the `block_on` function, something we don't get when
 /// talking to a shared runtime via a [`Handle`].
 ///
-/// This is not a problem with async-std where there is only one
-/// shared runtime and we can always use the [`block_on`] function.
-///
 /// [`AsyncRuntime`]: enum.AsyncRuntime.html
 /// [`TokioSingle`]: enum.AsyncRuntime.html#variant.TokioSingle
 /// [`TokioShared`]: enum.AsyncRuntime.html#variant.TokioShared
 /// [`Runtime`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html
 /// [`Handle`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html
-/// [`block_on`]: https://docs.rs/async-std/latest/async_std/task/fn.block_on.html
 pub trait BlockExt {
     /// Block on a future to complete.
     fn block(self) -> Self::Output

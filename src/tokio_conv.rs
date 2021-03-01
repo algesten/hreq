@@ -8,7 +8,6 @@ use tokio::io::{
     AsyncRead as TokioAsyncRead, AsyncSeek as TokioAsyncSeek, AsyncWrite as TokioAsyncWrite,
 };
 
-#[cfg(feature = "tokio")]
 pub(crate) fn from_tokio<Z>(adapted: Z) -> FromAdapter<Z>
 where
     Z: TokioAsyncRead + TokioAsyncWrite + Unpin + Send + 'static,
@@ -30,7 +29,15 @@ impl<Z: TokioAsyncRead + Unpin> AsyncRead for FromAdapter<Z> {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.get_mut().adapted).poll_read(cx, buf)
+        let mut rbuf = tokio::io::ReadBuf::new(buf);
+
+        ready!(TokioAsyncRead::poll_read(
+            Pin::new(&mut self.get_mut().adapted),
+            cx,
+            &mut rbuf
+        ))?;
+
+        Poll::Ready(Ok(rbuf.filled().len()))
     }
 }
 
@@ -71,7 +78,7 @@ where
         let this = self.get_mut();
 
         if !this.waiting_for_seek {
-            ready!(Pin::new(&mut this.adapted).start_seek(cx, pos))?;
+            Pin::new(&mut this.adapted).start_seek(pos)?;
             this.waiting_for_seek = true;
         }
 

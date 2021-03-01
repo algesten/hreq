@@ -95,7 +95,7 @@
 //! # State
 //!
 //! Many servers needs to work over some shared mutable state to function.
-//! The server runs in an async runtime such as async-std or tokio, typically
+//! The server runs in an async runtime (tokio), typically
 //! with multiple threads accepting connections. Therefore the state needs
 //! to be shareable between threads, in rust terms [`Sync`], as well being
 //! clonable with [`Clone`].
@@ -161,6 +161,7 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 mod chain;
 mod conn;
@@ -583,13 +584,13 @@ where
             const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024;
             const DEFAULT_MAX_FRAME_SIZE: u32 = 16 * 1024;
 
-            let mut builder = hreq_h2::server::Builder::default();
+            let mut builder = h2::server::Builder::default();
             builder
                 .initial_window_size(DEFAULT_STREAM_WINDOW)
                 .initial_connection_window_size(DEFAULT_CONN_WINDOW)
                 .max_frame_size(DEFAULT_MAX_FRAME_SIZE);
 
-            let mut h2conn = builder.handshake(stream).await?;
+            let mut h2conn = builder.handshake(stream.compat()).await?;
 
             let pinger = h2conn.ping_pong().expect("ping_pong of h2 conn");
             let bw = BandwidthMonitor::new(pinger);

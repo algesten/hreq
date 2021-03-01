@@ -76,9 +76,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 /// Sync readers risks blocking the async runtime. This is not a big
 /// concern if the reader is something like a `std::io::Cursor` over
 /// a slice of memory, or maybe even a `std::fs::File` with a fast
-/// disk. Choice of runtime also matters; `async-std` tries to
-/// automatically "parry" blocking operations. Use sync readers
-/// with caution and prefer async readers.
+/// disk.
 ///
 /// ## charset encoding
 ///
@@ -402,8 +400,7 @@ impl Body {
     ///
     /// Might block the async runtime, so whether using this is a good idea depends on
     /// circumstances. If the `Read` is just an `std::io::Cursor` over some memory or
-    /// very fast file system, it might be ok. Some runtimes like `async-std` further
-    /// have ways of detecting blocking operations.
+    /// very fast file system, it might be ok.
     ///
     /// Use with care.
     ///
