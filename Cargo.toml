@@ -37,7 +37,7 @@ server = [
 
 [dependencies]
 bytes = "1"
-cookie = { version = "0.14", default-features = false, features = ["percent-encode"] }
+cookie = { version = "0.15", default-features = false, features = ["percent-encode"] }
 encoding_rs = "0.8"
 flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
