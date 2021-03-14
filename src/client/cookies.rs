@@ -78,7 +78,7 @@ impl Cookies {
                     let secure_match = is_secure || !cookie.secure().unwrap_or(false);
 
                     // unwrap is ok cause all cookies have expires() after added to jars above.
-                    let expired = cookie.expires().unwrap() < now;
+                    let expired = cookie.expires().unwrap().datetime().unwrap() < now;
 
                     if path_match && secure_match && !expired {
                         ret.push(cookie);
