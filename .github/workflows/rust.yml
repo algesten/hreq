@@ -21,6 +21,8 @@ jobs:
         exclude:
           - server: ""
             what: "--tests"
+          - server: ""
+            feature: ""
     env:
       RUST_BACKTRACE: "1"
       RUSTFLAGS: "-D dead_code -D unused-variables -D unused"
