@@ -48,7 +48,7 @@ http = "0.2"
 httparse = "1"
 httpdate = "0.3.2"
 once_cell = "1"
-publicsuffix = { default-features = false, version = "1.5.4" }
+publicsuffix = { default-features = false, version = "2.0.5" }
 qstring = "0.7"
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }
