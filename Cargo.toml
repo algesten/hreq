@@ -39,7 +39,6 @@ server = [
 bytes = "1"
 cookie = { version = "0.15", default-features = false, features = ["percent-encode"] }
 encoding_rs = "0.8"
-flate2 = "1"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
 hreq-h1 = { version = "0.3.8" }
@@ -48,7 +47,7 @@ http = "0.2"
 httparse = "1"
 httpdate = "0.3.2"
 once_cell = "1"
-publicsuffix = { default-features = false, version = "1.5.4" }
+psl = "2"
 qstring = "0.7"
 serde = { version = "1", default-features = false }
 serde_json = { version = "1", default-features = false }

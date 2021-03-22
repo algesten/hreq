@@ -371,7 +371,6 @@ mod error;
 mod head_ext;
 mod params;
 mod proto;
-mod psl;
 mod res_ext;
 mod uninit;
 mod uri_ext;
