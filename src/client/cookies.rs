@@ -1,8 +1,8 @@
 //! The structure cookie::CookieJar does not separate cookies per domain. Cookies does.
 
-use crate::psl::PUBLIC_SUFFIX_LIST;
 use crate::uri_ext::UriExt;
 use cookie::{Cookie, CookieJar};
+use psl::{List, Psl};
 use std::collections::hash_map::HashMap;
 use time::{Duration, OffsetDateTime};
 
@@ -150,34 +150,33 @@ fn effective_domain(cookie_domain: Option<&str>, uri: &http::Uri) -> Option<Stri
 }
 
 fn is_valid_cookie_domain(domain: &str, name: &str) -> bool {
-    let parsed = match PUBLIC_SUFFIX_LIST.parse_domain(domain) {
-        Ok(v) => v,
-        Err(e) => {
-            // this will catch TLD cookie domains such as "co.uk", "com" etc.
-            trace!("Ignore cookie with bad domain ({}): {}", domain, e);
+    let suffix = match List.suffix(domain.as_bytes()) {
+        Some(v) => v,
+        None => {
+            // this will catch empty domain names
+            // this should never happen as domain should be valid
+            trace!("Ignore cookie with bad domain ({}): {}", domain, name);
             return false;
         }
     };
-    // for "blah.example.com," suffix is "com" and root is "example.com"
-    match (parsed.root(), parsed.suffix()) {
-        (Some(root), Some(sufx)) => {
-            trace!(
-                "Accept cookie domain with root '{}' and suffix '{}': {}",
-                root,
-                sufx,
-                name
-            );
-        }
-        _ => {
-            trace!(
-                "Ignore cookie with root '{:?}' and suffix '{:?}': {}",
-                parsed.root(),
-                parsed.suffix(),
-                name
-            );
-            return false;
-        }
+    // this will catch TLD cookie domains such as "co.uk", "com" etc.
+    // We first check if the suffix is known because we don't want to block
+    // domains with unknown suffixes like "localhost".
+    if suffix.is_known() && suffix == domain {
+        trace!("Ignore cookie with suffix '{}': {}", domain, name);
+        return false;
     }
+    trace!(
+        "Accept cookie domain '{}' with {} suffix '{}': {}",
+        domain,
+        if suffix.is_known() {
+            "known"
+        } else {
+            "unknown"
+        },
+        &domain[domain.len() - suffix.as_bytes().len()..],
+        name
+    );
     true
 }
 
@@ -211,7 +210,6 @@ mod test {
         ("gmail", false),
         ("gmail.com", true),
         ("a.gmail.com", true),
-        ("_tcp.example.com", false),
     ];
 
     #[test]
