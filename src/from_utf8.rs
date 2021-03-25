@@ -18,13 +18,13 @@ pub fn from_utf8_lossy_replace(mut buf: Vec<u8>, replacement: u8) -> String {
                 let relative_end = if let Some(len) = len {
                     // replace all chars in len with
                     for i in idx..(idx + len) {
-                        buf[i] = replacement;
+                        buf[start_from + i] = replacement;
                     }
 
                     idx + len
                 } else {
                     // unexpected end of string, replace last char.
-                    buf[idx - 1] = replacement;
+                    buf[start_from + idx - 1] = replacement;
 
                     idx
                 };
@@ -48,9 +48,9 @@ mod test {
 
     #[test]
     pub fn utf8_illegal_middle() {
-        let buf = vec![0x6d, 0x6f, 0x73, 0x74, 0x20, 0x88, 0x20]; // "most ? "
+        let buf = vec![0x6d, 0x6f, 0x73, 0x74, 0x20, 0x88, 0x20, 0x88, 0x20]; // "most ? ? "
         let s = from_utf8_lossy_replace(buf, b'?');
-        assert_eq!(s, "most ? ");
+        assert_eq!(s, "most ? ? ");
     }
 
     #[test]
