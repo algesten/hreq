@@ -368,6 +368,7 @@ mod client;
 mod deadline;
 mod either;
 mod error;
+mod from_utf8;
 mod head_ext;
 mod params;
 mod proto;

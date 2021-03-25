@@ -3,6 +3,7 @@
 use crate::body_codec::{BodyCodec, BodyImpl};
 use crate::bw::BandwidthMonitor;
 use crate::charset::CharCodec;
+use crate::from_utf8::from_utf8_lossy_replace;
 use crate::head_ext::HeaderMapExt;
 use crate::params::HReqParams;
 use crate::uninit::UninitBuf;
@@ -670,7 +671,7 @@ impl Body {
             char_codec.remove_encoder();
         }
         let vec = self.read_to_vec().await?;
-        Ok(String::from_utf8(vec).expect("Incoming body is not valid utf-8"))
+        Ok(from_utf8_lossy_replace(vec, b'?'))
     }
 
     /// Reads to body to end as a JSON string into a deserialized object.
