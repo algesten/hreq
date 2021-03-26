@@ -2,7 +2,7 @@ use hreq::prelude::*;
 
 #[tokio::main]
 async fn main() {
-    let response = http::Request::get("https://httpbin.org/get")
+    let response = http::Request::get("https://c64games.de")
         .call()
         .await
         .expect("Failed to call");

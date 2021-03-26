@@ -75,7 +75,7 @@ fn response_body_timeout() -> Result<(), Error> {
     // we do get a response, but reading the body times out.
     assert_eq!(res.status(), 200);
 
-    let r = res.into_body().read_to_vec().block();
+    let r = res.into_body().read_to_vec(1024).block();
 
     assert!(r.is_err());
     let err = r.unwrap_err();

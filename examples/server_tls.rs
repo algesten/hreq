@@ -7,7 +7,7 @@ async fn main() {
     server
         .at("/*any")
         .all(|req: http::Request<Body>| async move {
-            if let Some(v) = req.into_body().read_to_vec().await.ok() {
+            if let Some(v) = req.into_body().read_to_vec(10_000).await.ok() {
                 format!("You sent: {} bytes\n", v.len())
             } else {
                 "Nothing sent".into()

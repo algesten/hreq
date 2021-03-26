@@ -238,7 +238,7 @@ where
     /// assert_eq!(resp.header("content-type"), Some("text/html; charset=Shift_JIS"));
     ///
     /// // this is now converted to EUC_JP
-    /// let vec = resp.body_mut().read_to_vec().block().unwrap();
+    /// let vec = resp.body_mut().read_to_vec(1024).block().unwrap();
     /// ```
     ///
     /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
@@ -282,7 +282,7 @@ where
     ///     .call().block().unwrap();
     ///
     /// // this content is still compressed
-    /// let compressed = resp.body_mut().read_to_vec();
+    /// let compressed = resp.body_mut().read_to_vec(1024);
     /// ```
     fn content_decode(self, enabled: bool) -> Self;
 

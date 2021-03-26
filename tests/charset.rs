@@ -27,7 +27,7 @@ fn from_charset_iso8859_ok() -> Result<(), Error> {
         Some("text/plain; charset=iso8859-1")
     );
 
-    let body = String::from_utf8(res.into_body().read_to_vec().block()?).unwrap();
+    let body = String::from_utf8(res.into_body().read_to_vec(1024).block()?).unwrap();
     assert_eq!(body, "and in the river is an island. åiåaäeöÅIÅAÄEÖ.\n");
 
     shut.shutdown().block();
@@ -50,7 +50,7 @@ fn from_charset_iso8859_disable() -> Result<(), Error> {
         .call()
         .block()?;
 
-    let vec = res.into_body().read_to_vec().block()?;
+    let vec = res.into_body().read_to_vec(1024).block()?;
 
     // ÄEÖ.<lf>
     assert_eq!(&vec[42..], &[196, 69, 214, 46, 10]);
@@ -79,7 +79,7 @@ fn from_charset_shift_jis() -> Result<(), Error> {
         Some("text/plain; charset=Shift_JIS")
     );
 
-    let vec = res.into_body().read_to_vec().block()?;
+    let vec = res.into_body().read_to_vec(1024).block()?;
 
     assert_eq!(
         vec,
@@ -99,7 +99,7 @@ fn to_charset_iso8859() -> Result<(), Error> {
         .at("/path")
         .all(|req: http::Request<Body>| async move {
             let req = req.charset_decode_target("iso8859-1");
-            let x = req.into_body().read_to_vec().await?;
+            let x = req.into_body().read_to_vec(1024).await?;
 
             assert_eq!(x, vec![111, 99, 104, 32, 229, 105, 229, 97, 228, 101, 246]);
 
@@ -130,7 +130,7 @@ fn charset_euc_jp_to_shift_jis() -> Result<(), Error> {
         .all(|req: http::Request<Body>| async move {
             let req = req.charset_decode(false);
 
-            let x = req.into_body().read_to_vec().await?;
+            let x = req.into_body().read_to_vec(1024).await?;
             assert_eq!(
                 x,
                 vec![130, 168, 130, 205, 130, 230, 130, 164, 144, 162, 138, 69]
@@ -164,7 +164,7 @@ fn to_charset_shift_jis_disable() -> Result<(), Error> {
         .all(|req: http::Request<Body>| async move {
             let req = req.charset_decode(false);
 
-            let x = req.into_body().read_to_vec().await?;
+            let x = req.into_body().read_to_vec(1024).await?;
             assert_eq!(x, EUC_JP);
             Result::<_, Error>::Ok(())
         });
@@ -193,7 +193,7 @@ fn to_charset_shift_jis_string() -> Result<(), Error> {
         .all(|req: http::Request<Body>| async move {
             let req = req.charset_decode(false);
 
-            let x = req.into_body().read_to_vec().await?;
+            let x = req.into_body().read_to_vec(1024).await?;
             assert_eq!(
                 x,
                 vec![130, 168, 130, 205, 130, 230, 130, 164, 144, 162, 138, 69]

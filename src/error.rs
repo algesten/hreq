@@ -3,6 +3,7 @@ use std::io;
 
 #[cfg(feature = "server")]
 use std::net;
+use std::str::Utf8Error;
 
 #[cfg(feature = "tls")]
 use rustls::TLSError;
@@ -33,6 +34,8 @@ pub enum Error {
     /// Failure to parse an address that the server will listen to.
     #[cfg(feature = "server")]
     AddrParse(net::AddrParseError),
+    /// Failure to convert a string to UTF8.
+    Utf8(Utf8Error),
 }
 
 impl Error {
@@ -94,11 +97,28 @@ impl fmt::Display for Error {
             Error::DnsName(v) => write!(f, "dns name: {}", v),
             #[cfg(feature = "server")]
             Error::AddrParse(v) => write!(f, "addr parse: {}", v),
+            Error::Utf8(v) => write!(f, "utf-8: {}", v),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::User(_) => None,
+            Error::Proto(_) => None,
+            Error::Io(e) => Some(e),
+            Error::Http11Parser(e) => Some(e),
+            Error::H2(e) => Some(e),
+            Error::Http(e) => Some(e),
+            Error::Json(e) => Some(e),
+            Error::TlsError(e) => Some(e),
+            Error::DnsName(e) => Some(e),
+            Error::AddrParse(e) => Some(e),
+            Error::Utf8(e) => Some(e),
+        }
+    }
+}
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
@@ -157,5 +177,11 @@ impl From<webpki::InvalidDNSNameError> for Error {
 impl From<net::AddrParseError> for Error {
     fn from(e: net::AddrParseError) -> Self {
         Error::AddrParse(e)
+    }
+}
+
+impl From<Utf8Error> for Error {
+    fn from(e: Utf8Error) -> Self {
+        Error::Utf8(e)
     }
 }

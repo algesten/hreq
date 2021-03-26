@@ -14,7 +14,7 @@ fn sane_headers_with_size10() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header_as("content-length"), Some(10));
             assert_eq!(req.header("content-encoding"), None);
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(1024).await.unwrap();
             assert_eq!(v.len(), 10);
             "ok"
         });
@@ -36,7 +36,7 @@ fn sane_headers_with_size0() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header_as("content-length"), Some(0));
             assert_eq!(req.header("content-encoding"), None);
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(1024).await.unwrap();
             assert_eq!(v.len(), 0);
             "ok"
         });
@@ -58,7 +58,7 @@ fn sane_headers_with_no_size() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header("content-length"), Some("10"));
             assert_eq!(req.header("content-encoding"), None);
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(1024).await.unwrap();
             assert_eq!(v.len(), 10);
             "ok"
         });
@@ -87,7 +87,7 @@ fn sane_headers_with_content_enc() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header("content-length"), Some("23"));
             assert_eq!(req.header("content-encoding"), Some("gzip"));
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(1024).await.unwrap();
             assert_eq!(v.len(), 3);
             "ok"
         });
@@ -114,7 +114,7 @@ fn req_body1kb_with_size() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header_as("content-length"), Some(SIZE));
             assert_eq!(req.header("content-encoding"), None);
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(1024).await.unwrap();
             assert_eq!(v.len(), SIZE as usize);
             "ok"
         });
@@ -142,7 +142,7 @@ fn req_body100mb_no_size() -> Result<(), Error> {
             assert_eq!(req.header("content-length"), None);
             assert_eq!(req.header("content-encoding"), None);
 
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(SIZE as usize).await.unwrap();
             assert_eq!(v.len(), SIZE as usize);
 
             "ok"
@@ -177,7 +177,7 @@ fn req_body100mb_with_size() -> Result<(), Error> {
             assert_eq!(req.header("transfer-encoding"), None);
             assert_eq!(req.header_as("content-length"), Some(SIZE));
             assert_eq!(req.header("content-encoding"), None);
-            let v = req.into_body().read_to_vec().await.unwrap();
+            let v = req.into_body().read_to_vec(SIZE as usize).await.unwrap();
             assert_eq!(v.len(), SIZE as usize);
             "ok"
         });

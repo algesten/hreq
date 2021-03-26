@@ -28,7 +28,7 @@ fn gzip_response_prebuf() -> Result<(), hreq::Error> {
     assert_eq!(res.header("content-encoding"), Some("gzip"));
     assert_eq!(res.header("transfer-encoding"), None);
 
-    let v = res.into_body().read_to_vec().block()?;
+    let v = res.into_body().read_to_vec(1024).block()?;
     let s = String::from_utf8_lossy(&v);
 
     assert_eq!(s, "Ok");
@@ -65,7 +65,7 @@ fn gzip_response_no_decode() -> Result<(), hreq::Error> {
 
     assert_eq!(res.status(), 200);
     assert_eq!(res.header("content-encoding"), Some("gzip"));
-    let vec = res.into_body().read_to_vec().block()?;
+    let vec = res.into_body().read_to_vec(1024).block()?;
 
     let mut decoder = GzipDecoder::new(BufReader::new(Cursor::new(vec)));
     let mut s = String::new();

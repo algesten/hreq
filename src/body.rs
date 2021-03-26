@@ -28,6 +28,7 @@ use std::task::{Context, Poll};
 const CT_TEXT: &str = "text/plain; charset=utf-8";
 const CT_BIN: &str = "application/octet-stream";
 const CT_JSON: &str = "application/json; charset=utf-8";
+const MAX_STRING_SIZE: usize = 10 * 1024 * 1024;
 
 /// Body of an http request or response.
 ///
@@ -110,6 +111,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 ///   * [`Body.read()`]
 ///   * [`Body.read_to_vec()`]
 ///   * [`Body.read_to_string()`]
+///   * [`Body.read_to_string_lossy()`]
 ///   * [`Body.read_and_discard()`]
 ///
 /// Finaly `Body` implements `AsyncRead`, which means that in many cases, it can be used
@@ -155,6 +157,7 @@ const CT_JSON: &str = "application/json; charset=utf-8";
 /// [`Body.read()`]: struct.Body.html#method.read
 /// [`Body.read_to_vec()`]: struct.Body.html#method.read_to_vec
 /// [`Body.read_to_string()`]: struct.Body.html#method.read_to_string
+/// [`Body.read_to_string_lossy()`]: struct.Body.html#method.read_to_string_lossy
 /// [`Body.read_and_discard()`]: struct.Body.html#method.read_and_discard
 /// [`charset_encode_source`]: trait.RequestBuilderExt.html#tymethod.charset_encode_source
 /// [`charset_encode`]: trait.RequestBuilderExt.html#tymethod.charset_encode
@@ -609,10 +612,10 @@ impl Body {
         Ok(poll_fn(|cx| Pin::new(&mut *self).poll_read(cx, buf)).await?)
     }
 
-    /// Reads to body to end into a new `Vec`.
+    /// Reads to body into a new `Vec` limited by `limit`.
     ///
-    /// This can potentially take up a lot of memory (or even exhaust your RAM), depending on
-    /// how big the response body is.
+    /// Limit is a safety mechanism against hosts that would exhaust client memory by sending
+    /// large response bodies.
     ///
     /// See [`charset_decode`] and [`charset_decode_target`] of headers and options that will
     /// affect `text/` MIME types.
@@ -625,30 +628,34 @@ impl Body {
     /// let mut resp = Request::get("http://httpbin.org/html")
     ///     .call().block().unwrap();
     ///
-    /// let data = resp.body_mut().read_to_vec().block().unwrap();
+    /// let data = resp.body_mut().read_to_vec(4096).block().unwrap();
     ///
     /// assert_eq!(&data[..15], b"<!DOCTYPE html>");
     /// ```
     ///
     /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
     /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
-    pub async fn read_to_vec(&mut self) -> Result<Vec<u8>, Error> {
+    pub async fn read_to_vec(&mut self, limit: usize) -> Result<Vec<u8>, Error> {
         let mut vec = Vec::with_capacity(8192);
 
-        self.read_to_end(&mut vec).await?;
+        self.take((limit + 1) as u64).read_to_end(&mut vec).await?;
+
+        if vec.len() > limit {
+            return Err(Error::Proto(format!(
+                "body exceeds limit of {} bytes",
+                limit
+            )));
+        }
 
         trace!("read_to_vec returning len: {}", vec.len());
         Ok(vec)
     }
 
-    /// Reads to body to end into a new `String`.
+    /// Reads to body into a new `String`. Response is limited to 10MB.
     ///
-    /// This can potentially take up a lot of memory (or even exhaust your RAM), depending on
-    /// how big the response body is.
+    /// Invalid utf-8 will cause an error.
     ///
     /// Since a rust string is always `utf-8`, [`charset_decode_target`] is ignored.
-    ///
-    /// Panics if [`charset_decode`] is disabled and incoming data is not valid UTF-8.
     ///
     /// # Examples
     ///
@@ -663,14 +670,51 @@ impl Body {
     /// assert_eq!(&data[..15], "<!DOCTYPE html>");
     /// ```
     ///
-    /// [`charset_decode`]: trait.RequestBuilderExt.html#tymethod.charset_decode
     /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
     pub async fn read_to_string(&mut self) -> Result<String, Error> {
         // Remove any user set char encoder since we're reading to a rust string.
         if let Some(char_codec) = &mut self.char_codec {
             char_codec.remove_encoder();
         }
-        let vec = self.read_to_vec().await?;
+
+        let vec = self.read_to_vec(MAX_STRING_SIZE).await?;
+
+        Ok(String::from_utf8(vec).map_err(|e| e.utf8_error())?)
+    }
+
+    /// Reads to body into a new `String`. Response is limited to 10MB.
+    ///
+    /// Invalid utf-8 will be replaced by a question mark `?`. This is in contrast to
+    /// rust `String::from_utf8_lossy`, which uses the � Unicode Character
+    /// ['REPLACEMENT CHARACTER' (U+FFFD)](https://www.fileformat.info/info/unicode/char/fffd/index.htm).
+    /// The reason is that the U+FFFD character is 3 bytes encoded as utf-8, which would
+    /// force hreq to allocate a new buffer when turning the incoming body to a String.
+    /// By using `?`, hreq can replace illegal utf-8 in-place and avoid the extra allocation.
+    ///
+    /// Since a rust string is always `utf-8`, [`charset_decode_target`] is ignored.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hreq::prelude::*;
+    ///
+    /// let mut resp = Request::get("http://httpbin.org/html")
+    ///     .call().block().unwrap();
+    ///
+    /// let data = resp.body_mut().read_to_string_lossy().block().unwrap();
+    ///
+    /// assert_eq!(&data[..15], "<!DOCTYPE html>");
+    /// ```
+    ///
+    /// [`charset_decode_target`]: trait.RequestBuilderExt.html#tymethod.charset_decode_target
+    pub async fn read_to_string_lossy(&mut self) -> Result<String, Error> {
+        // Remove any user set char encoder since we're reading to a rust string.
+        if let Some(char_codec) = &mut self.char_codec {
+            char_codec.remove_encoder();
+        }
+
+        let vec = self.read_to_vec(MAX_STRING_SIZE).await?;
+
         Ok(from_utf8_lossy_replace(vec, b'?'))
     }
 

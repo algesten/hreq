@@ -58,7 +58,7 @@ fn res_body1kb_no_size_prebuf() -> Result<(), Error> {
     assert_eq!(res.header("transfer-encoding"), None);
     assert_eq!(res.header("content-length"), Some("1024"));
 
-    let bytes = res.into_body().read_to_vec().block()?;
+    let bytes = res.into_body().read_to_vec(1024).block()?;
     assert_eq!(bytes.len(), 1024);
 
     Ok(())
@@ -84,7 +84,7 @@ fn res_body1kb_no_size_no_prebuf() -> Result<(), Error> {
     assert_eq!(res.header("transfer-encoding"), Some("chunked"));
     assert_eq!(res.header("content-length"), None);
 
-    let bytes = res.into_body().read_to_vec().block()?;
+    let bytes = res.into_body().read_to_vec(1024).block()?;
     assert_eq!(bytes.len(), 1024);
 
     Ok(())
@@ -111,8 +111,40 @@ fn res_body10mb_with_size() -> Result<(), Error> {
     assert_eq!(res.status(), 200);
     assert_eq!(res.header("transfer-encoding"), None);
 
-    let bytes = res.into_body().read_to_vec().block()?;
+    let bytes = res.into_body().read_to_vec(AMOUNT).block()?;
     assert_eq!(bytes.len(), AMOUNT);
+
+    shut.shutdown().block();
+    Ok(())
+}
+
+#[test]
+fn res_body_larger_than_limit() -> Result<(), Error> {
+    common::setup_logger();
+
+    const AMOUNT: usize = 1 * 1024 * 1024;
+    let mut server = Server::new();
+
+    server.at("/path").all(|_: http::Request<Body>| async move {
+        // will set content-length header
+        vec![42_u8; AMOUNT]
+    });
+
+    let (shut, addr) = server.listen(0).block()?;
+
+    let uri = format!("http://127.0.0.1:{}/path", addr.port());
+
+    let req = http::Request::post(&uri).body("")?;
+    let res = req.send().block()?;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.header("transfer-encoding"), None);
+
+    let result = res.into_body().read_to_vec(AMOUNT - 1).block();
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "proto: body exceeds limit of 1048575 bytes"
+    );
 
     shut.shutdown().block();
     Ok(())

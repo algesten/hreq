@@ -111,7 +111,7 @@ fn missing_scheme() {
 //         .at("/path2")
 //         .all(|req: http::Request<Body>| async move {
 //             println!("path2");
-//             let vec = req.into_body().read_to_vec().await?;
+//             let vec = req.into_body().read_to_vec(1024).await?;
 //             assert_eq!(vec.len(), 123);
 //             Result::<_, Error>::Ok("ok")
 //         });
