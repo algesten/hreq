@@ -30,7 +30,7 @@ pub enum Error {
     TlsError(TLSError),
     #[cfg(feature = "tls")]
     /// Failure to convert a domain name as TLS cert name.
-    DnsName(webpki::InvalidDNSNameError),
+    DnsName(async_rustls::webpki::InvalidDNSNameError),
     /// Failure to parse an address that the server will listen to.
     #[cfg(feature = "server")]
     AddrParse(net::AddrParseError),
@@ -167,8 +167,8 @@ impl From<TLSError> for Error {
 }
 
 #[cfg(feature = "tls")]
-impl From<webpki::InvalidDNSNameError> for Error {
-    fn from(e: webpki::InvalidDNSNameError) -> Self {
+impl From<async_rustls::webpki::InvalidDNSNameError> for Error {
+    fn from(e: async_rustls::webpki::InvalidDNSNameError) -> Self {
         Error::DnsName(e)
     }
 }

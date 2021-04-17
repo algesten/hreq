@@ -24,8 +24,8 @@ gzip = [
     "async-compression",
 ]
 tls = [
+    "async-rustls",
     "rustls",
-    "webpki",
     "webpki-roots",
 ]
 test-topsites = []
@@ -66,8 +66,8 @@ tokio-util = { version = "0.6", default-features = false, features = ["compat"] 
 async-compression = { version = "0.3", default-features = false, features = ["gzip", "futures-bufread"], optional = true }
 
 ## tls
+async-rustls = { version = "0.2", optional = true}
 rustls = { version = "0.19", default-features = false, features = ["dangerous_configuration"], optional = true }
-webpki = { version = "0.21", optional = true }
 webpki-roots = { version = "0.21", optional = true }
 
 ## server
