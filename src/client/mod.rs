@@ -73,9 +73,9 @@ pub(crate) async fn open_stream(
     proto: Protocol,
 ) -> Result<Connection, Error> {
     if proto == Protocol::Http2 {
-        const DEFAULT_CONN_WINDOW: u32 = 5 * 1024 * 1024;
-        const DEFAULT_STREAM_WINDOW: u32 = 2 * 1024 * 1024;
-        const DEFAULT_MAX_FRAME_SIZE: u32 = 16 * 1024;
+        const DEFAULT_STREAM_WINDOW: u32 = 65_535;
+        const DEFAULT_CONN_WINDOW: u32 = 65_535;
+        const DEFAULT_MAX_FRAME_SIZE: u32 = 16_384;
 
         let mut builder = h2::client::Builder::default();
         builder
