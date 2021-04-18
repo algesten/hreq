@@ -5,7 +5,7 @@ use crate::proto::{ALPN_H1, ALPN_H2};
 use crate::Error;
 use crate::Stream;
 use async_rustls::webpki::DNSNameRef;
-use async_rustls::{TlsAcceptor, TlsConnector};
+use async_rustls::TlsConnector;
 use rustls::{ClientConfig, Session};
 use std::sync::Arc;
 use webpki_roots::TLS_SERVER_ROOTS;
@@ -79,6 +79,8 @@ pub(crate) async fn wrap_tls_server(
     stream: impl Stream,
     config: Arc<ServerConfig>,
 ) -> Result<(impl Stream, Protocol), Error> {
+    use async_rustls::TlsAcceptor;
+
     let acceptor: TlsAcceptor = config.into();
 
     let tls = acceptor.accept(stream).await?;

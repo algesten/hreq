@@ -116,6 +116,7 @@ impl std::error::Error for Error {
             Error::TlsError(e) => Some(e),
             #[cfg(feature = "tls")]
             Error::DnsName(e) => Some(e),
+            #[cfg(feature = "server")]
             Error::AddrParse(e) => Some(e),
             Error::Utf8(e) => Some(e),
         }
