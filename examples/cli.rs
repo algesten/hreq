@@ -44,7 +44,7 @@ fn smoke_test() -> Result<(), Box<dyn std::error::Error>> {
     // This retains the whole body in memory, but tests show that RAM is plentiful, so I didn't bother optimizing.
     // Converting to a string lets us exercise encoding conversion routines.
     let mut body = response.into_body();
-    let text = body.read_to_string().block()?;
+    let text = body.read_to_string_lossy().block()?;
     // Print the first 8k chars of the body to get an idea of what we've downloaded, ignore the rest.
 
     let first_8k_chars_of_body: String = text.chars().take(8192).collect();
