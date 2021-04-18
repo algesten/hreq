@@ -1,6 +1,7 @@
 use crate::Error;
 use once_cell::sync::Lazy;
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 const DEFAULT_PORT_HTTP: u16 = 80;
 const DEFAULT_PORT_HTTPS: u16 = 443;
@@ -37,8 +38,38 @@ impl UriExt for http::Uri {
     }
 
     fn parse_relative(&self, from: &str) -> Result<http::Uri, Error> {
-        let uri_res: Result<http::Uri, http::Error> =
-            from.parse::<http::Uri>().map_err(|e| e.into());
+        // There are two kinds of relative paths. Either starting with a '/' or not.
+        //
+        // root relative:
+        // "http://example.com/foo/" + "/bar/"   => "http://example.com/bar/"
+        //
+        // path relative:
+        // "http://example.com/foo/"    + "bar/" => "http://example.com/foo/bar/"
+        // "http://example.com/foo/baz" + "bar/" => "http://example.com/foo/bar/"
+        let is_path_relative = !from.contains("://") && !from.starts_with("/");
+
+        let uri_res: Result<http::Uri, http::Error> = {
+            if is_path_relative {
+                let mut buf = PathBuf::from(self.path());
+
+                // remove any files
+                if !self.path().ends_with('/') {
+                    if buf != Path::new("/") {
+                        buf.pop();
+                    }
+                }
+
+                // combine them together
+                buf.push(from);
+
+                let combined = buf.to_str().unwrap();
+
+                combined.parse::<http::Uri>().map_err(|e| e.into())
+            } else {
+                // The uri package will parse root relative paths without any help.
+                from.parse::<http::Uri>().map_err(|e| e.into())
+            }
+        };
 
         let uri = uri_res?;
 
@@ -197,6 +228,35 @@ mod test {
             let uri = test.parse::<http::Uri>().unwrap();
             let parent = uri.parent_host();
             assert_eq!(parent.map(|u| u.to_string()), expect.map(|s| s.to_string()));
+        }
+    }
+
+    const PARSE_RELATIVES: &[(&str, &str, &str)] = &[
+        //
+        ("http://x.com", "", "http://x.com/"),
+        ("http://x.com/", "/", "http://x.com/"),
+        ("http://x.com/", "bar", "http://x.com/bar"),
+        ("http://x.com/", "/bar", "http://x.com/bar"),
+        ("http://x.com/foo", "", "http://x.com/"),
+        ("http://x.com/foo", "/", "http://x.com/"),
+        ("http://x.com/foo", "bar", "http://x.com/bar"),
+        ("http://x.com/foo", "/bar", "http://x.com/bar"),
+        ("http://x.com/foo/", "", "http://x.com/foo/"),
+        ("http://x.com/foo/", "/", "http://x.com/"),
+        ("http://x.com/foo/", "bar", "http://x.com/foo/bar"),
+        ("http://x.com/foo/", "/bar", "http://x.com/bar"),
+    ];
+
+    #[test]
+    fn parse_relative() {
+        for (base, rel, truth) in PARSE_RELATIVES {
+            let url: http::Uri = base.parse().unwrap();
+
+            let parsed = url.parse_relative(rel).unwrap();
+
+            println!("{:?} + {:?} => {:?}", base, rel, truth);
+
+            assert_eq!(parsed.to_string(), *truth);
         }
     }
 }
