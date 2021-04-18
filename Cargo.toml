@@ -68,7 +68,7 @@ async-compression = { version = "0.3", default-features = false, features = ["gz
 ## tls
 async-rustls = { version = "0.2", optional = true}
 rustls = { version = "0.19", default-features = false, features = ["dangerous_configuration"], optional = true }
-webpki-roots = { version = "0.21", optional = true }
+webpki-roots = { version = "0.22", optional = true }
 
 ## server
 regex = { version = "1", default-features = false, features = ["std", "unicode"], optional = true }
