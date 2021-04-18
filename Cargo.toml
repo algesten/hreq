@@ -41,7 +41,7 @@ cookie = { version = "0.15", default-features = false, features = ["percent-enco
 encoding_rs = "0.8"
 futures-io = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["async-await-macro", "io"] }
-hreq-h1 = { version = "0.3.8" }
+hreq-h1 = { version = "0.3.10" }
 h2 = { version = "0.3" }
 http = "0.2"
 httparse = "1"
