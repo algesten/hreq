@@ -380,7 +380,7 @@ impl Agent {
                             Error::Proto("Redirect without Location header".into())
                         })?;
 
-                        trace!("Redirect to: {}", location);
+                        debug!("Redirect to: {}", location);
 
                         let (mut parts, body) = next_req.into_parts();
                         parts.uri = parts.uri.parse_relative(location)?;

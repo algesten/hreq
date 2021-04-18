@@ -111,7 +111,7 @@ impl Connection {
 
         let req = http::Request::from_parts(parts, body);
 
-        trace!(
+        debug!(
             "{} {} {} {} {:?}",
             self.inner,
             self.host_port(),
@@ -252,6 +252,8 @@ async fn send_req(
     } else {
         res_fut.await?
     };
+
+    debug!("{:?} {} {:?}", parts.version, parts.status, parts.headers);
 
     parts.extensions.insert(params.clone());
     res_body.set_unfinished_recs(unfin);
