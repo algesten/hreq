@@ -22,17 +22,11 @@ impl<State> End<State>
 where
     State: Clone + Unpin + Send + Sync + 'static,
 {
-    pub fn run<'a>(
-        &'a self,
-        state: Arc<State>,
-        req: Request<Body>,
-    ) -> impl Future<Output = Reply> + Send + 'a {
-        async move {
-            match self {
-                End::Handler(h) => h.call(req).await,
-                End::StateHandler(h) => h.call((*state).clone(), req).await,
-                End::Router(r) => r.run(state, req).await,
-            }
+    pub async fn run(&self, state: Arc<State>, req: Request<Body>) -> Reply {
+        match self {
+            End::Handler(h) => h.call(req).await,
+            End::StateHandler(h) => h.call((*state).clone(), req).await,
+            End::Router(r) => r.run(state, req).await,
         }
     }
 }
@@ -47,17 +41,10 @@ impl<State> Mid<State>
 where
     State: Clone + Unpin + Send + Sync + 'static,
 {
-    pub fn run<'a>(
-        &'a self,
-        state: Arc<State>,
-        req: Request<Body>,
-        next: Next,
-    ) -> impl Future<Output = Reply> + Send + 'a {
-        async move {
-            match self {
-                Mid::Middleware(m) => m.call(req, next).await,
-                Mid::StateMiddleware(m) => m.call((*state).clone(), req, next).await,
-            }
+    pub async fn run(&self, state: Arc<State>, req: Request<Body>, next: Next) -> Reply {
+        match self {
+            Mid::Middleware(m) => m.call(req, next).await,
+            Mid::StateMiddleware(m) => m.call((*state).clone(), req, next).await,
         }
     }
 }
@@ -95,17 +82,13 @@ where
         }
     }
 
-    pub fn run<'a>(
-        &'a self,
-        state: Arc<State>,
-        req: Request<Body>,
-    ) -> impl Future<Output = Reply> + Send + 'a {
+    pub async fn run(&self, state: Arc<State>, req: Request<Body>) -> Reply {
         let chain = self.next.clone();
         let state2 = state.clone();
         let next = Next(Box::new(|req: Request<Body>| {
             Box::pin(async move { chain.run(state2, req).await })
         }));
-        async move { self.mid.run(state, req, next).await }
+        self.mid.run(state, req, next).await
     }
 }
 
@@ -120,59 +103,59 @@ impl<State> Chain<State>
 where
     State: Clone + Unpin + Send + Sync + 'static,
 {
-    pub fn run<'a>(
-        &'a self,
+    pub fn run(
+        &self,
         state: Arc<State>,
         req: Request<Body>,
-    ) -> Pin<Box<dyn Future<Output = Reply> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Reply> + Send + '_>> {
         Box::pin(async move {
             match self {
-                Chain::MidWrap(c) => c.run(state, req).await.into(),
+                Chain::MidWrap(c) => c.run(state, req).await,
                 Chain::End(e) => e.run(state, req).await,
             }
         })
     }
 }
 
-impl<State> Into<Mid<State>> for Box<dyn Middleware> {
-    fn into(self) -> Mid<State> {
-        Mid::Middleware(self)
+impl<State> From<Box<dyn Middleware>> for Mid<State> {
+    fn from(v: Box<dyn Middleware>) -> Self {
+        Mid::Middleware(v)
     }
 }
 
-impl<State> Into<Mid<State>> for Box<dyn StateMiddleware<State>> {
-    fn into(self) -> Mid<State> {
-        Mid::StateMiddleware(self)
+impl<State> From<Box<dyn StateMiddleware<State>>> for Mid<State> {
+    fn from(val: Box<dyn StateMiddleware<State>>) -> Self {
+        Mid::StateMiddleware(val)
     }
 }
 
-impl<State> Into<End<State>> for Box<dyn Handler> {
-    fn into(self) -> End<State> {
-        End::Handler(Arc::new(self))
+impl<State> From<Box<dyn Handler>> for End<State> {
+    fn from(val: Box<dyn Handler>) -> End<State> {
+        End::Handler(Arc::new(val))
     }
 }
 
-impl<State> Into<End<State>> for Box<dyn StateHandler<State>> {
-    fn into(self) -> End<State> {
-        End::StateHandler(Arc::new(self))
+impl<State> From<Box<dyn StateHandler<State>>> for End<State> {
+    fn from(val: Box<dyn StateHandler<State>>) -> End<State> {
+        End::StateHandler(Arc::new(val))
     }
 }
 
-impl<State> Into<End<State>> for Router<State> {
-    fn into(self) -> End<State> {
-        End::Router(self)
+impl<State> From<Router<State>> for End<State> {
+    fn from(val: Router<State>) -> Self {
+        End::Router(val)
     }
 }
 
-impl<State> Into<Chain<State>> for MidWrap<State> {
-    fn into(self) -> Chain<State> {
-        Chain::MidWrap(self)
+impl<State> From<MidWrap<State>> for Chain<State> {
+    fn from(val: MidWrap<State>) -> Self {
+        Chain::MidWrap(val)
     }
 }
 
-impl<State> Into<Chain<State>> for End<State> {
-    fn into(self) -> Chain<State> {
-        Chain::End(self)
+impl<State> From<End<State>> for Chain<State> {
+    fn from(val: End<State>) -> Self {
+        Chain::End(val)
     }
 }
 

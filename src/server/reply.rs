@@ -150,6 +150,7 @@ impl Reply {
     }
 }
 
+#[allow(clippy::unit_arg)]
 impl<'a> From<()> for Reply {
     fn from(v: ()) -> Self {
         Reply::from(v.into())
@@ -194,7 +195,7 @@ impl<'a> From<&'a Vec<u8>> for Reply {
 
 impl From<Body> for Reply {
     fn from(v: Body) -> Self {
-        Reply::from(v.into())
+        Reply::from(v)
     }
 }
 

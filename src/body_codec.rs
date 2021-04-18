@@ -160,7 +160,6 @@ impl BodyReader {
         } else {
             None
         })
-        .into()
     }
 
     fn poll_read_underlying(

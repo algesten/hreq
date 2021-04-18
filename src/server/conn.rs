@@ -186,7 +186,7 @@ impl SendResponse {
         let mut params = res
             .extensions_mut()
             .remove::<HReqParams>()
-            .unwrap_or_else(|| HReqParams::new());
+            .unwrap_or_else(HReqParams::new);
 
         // merge parameters together
         params.copy_from_request(&req_params);

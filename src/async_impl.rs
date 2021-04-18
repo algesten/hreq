@@ -76,6 +76,7 @@ pub enum AsyncRuntime {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(unused)]
+#[allow(clippy::enum_variant_names)]
 enum Inner {
     TokioSingle,
     TokioShared,

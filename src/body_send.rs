@@ -1,7 +1,6 @@
 use crate::Error;
 use bytes::Bytes;
 use futures_util::future::poll_fn;
-use h2;
 use hreq_h1 as h1;
 
 /// Generalisation over sending body data.
@@ -20,7 +19,7 @@ impl BodySender {
             BodySender::H1(s) => Ok(s.send_data(buf, false).await?),
             BodySender::H2(s) => {
                 loop {
-                    if buf.len() == 0 {
+                    if buf.is_empty() {
                         break;
                     }
 

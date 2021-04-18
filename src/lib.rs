@@ -1,4 +1,5 @@
 #![warn(clippy::all)]
+#![allow(clippy::new_without_default)]
 #![warn(missing_docs, missing_debug_implementations)]
 
 //! hreq is a user first async http client and server.
@@ -387,13 +388,13 @@ mod tls;
 mod tokio_conv;
 
 #[doc(hidden)]
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub static VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use once_cell::sync::Lazy;
 
 // Can't have two slashes here apparently.
 // https://tools.ietf.org/html/rfc7230#section-3.2.6
-pub(crate) const AGENT_IDENT: Lazy<String> = Lazy::new(|| format!("hreq/{}", crate::VERSION));
+pub(crate) static AGENT_IDENT: Lazy<String> = Lazy::new(|| format!("hreq/{}", crate::VERSION));
 
 pub(crate) use futures_io::{AsyncBufRead, AsyncRead, AsyncSeek, AsyncWrite};
 

@@ -12,10 +12,10 @@ pub trait MethodExt {
 
 impl MethodExt for http::Method {
     fn indicates_body(&self) -> bool {
-        match *self {
-            http::Method::POST | http::Method::PUT | http::Method::PATCH => true,
-            _ => false,
-        }
+        matches!(
+            *self,
+            http::Method::POST | http::Method::PUT | http::Method::PATCH
+        )
     }
 }
 

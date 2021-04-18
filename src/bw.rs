@@ -51,7 +51,7 @@ impl BandwidthMonitor {
     pub fn poll_window_update(&mut self, cx: &mut Context<'_>) -> Poll<WindowSize> {
         let mut lock = self.inner.lock().unwrap();
 
-        if !lock.ping_sent.is_some() {
+        if lock.ping_sent.is_none() {
             // send ping if we haven't done so.
 
             match lock.pinger.send_ping(Ping::opaque()) {

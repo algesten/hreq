@@ -134,7 +134,7 @@ impl ServerRequestExt for Request<Body> {
         self.extensions()
             .get::<PathMatch>()
             .map(|m| m.all_params())
-            .unwrap_or_else(|| vec![])
+            .unwrap_or_else(Vec::new)
     }
 
     fn charset_decode(self, enable: bool) -> Self {

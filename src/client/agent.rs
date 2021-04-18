@@ -181,7 +181,7 @@ impl Agent {
         Ok(ret)
     }
 
-    pub(crate) fn send_future<'a>(mut self, req: http::Request<Body>) -> ResponseFuture {
+    pub(crate) fn send_future(mut self, req: http::Request<Body>) -> ResponseFuture {
         let do_fut = async move { self.send(req).await };
         ResponseFuture::new(do_fut)
     }
@@ -362,10 +362,7 @@ impl Agent {
 
                     // We only handle redirections with Location header.
                     fn is_handled_redirect(status: http::StatusCode) -> bool {
-                        match status.as_u16() {
-                            301 | 302 | 307 | 308 => true,
-                            _ => false,
-                        }
+                        matches!(status.as_u16(), 301 | 302 | 307 | 308)
                     }
 
                     // follow redirections
@@ -459,7 +456,7 @@ fn clone_to_empty_body(from: &http::Request<Body>) -> http::Request<Body> {
     let req = http::Request::builder()
         .method(from.method().clone())
         .uri(from.uri().clone())
-        .version(from.version().clone())
+        .version(from.version())
         .body(Body::empty())
         .unwrap();
 

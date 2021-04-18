@@ -41,10 +41,7 @@ pub enum Error {
 impl Error {
     /// Tells whether the wrapper error is `std::io::Error`.
     pub fn is_io(&self) -> bool {
-        match self {
-            Error::Io(_) => true,
-            _ => false,
-        }
+        matches!(self, Error::Io(_))
     }
 
     /// Converts this error to `std::io::Error`, if that is the wrapped error.
@@ -68,15 +65,16 @@ impl Error {
 
     /// Agent retry function depends on this classifying retryable errors.
     pub(crate) fn is_retryable(&self) -> bool {
-        match self {
-            Error::Io(e) => match e.kind() {
+        if let Error::Io(e) = self {
+            matches!(
+                e.kind(),
                 io::ErrorKind::BrokenPipe
-                | io::ErrorKind::ConnectionAborted
-                | io::ErrorKind::ConnectionReset
-                | io::ErrorKind::Interrupted => true,
-                _ => false,
-            },
-            _ => false,
+                    | io::ErrorKind::ConnectionAborted
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::Interrupted
+            )
+        } else {
+            false
         }
     }
 }

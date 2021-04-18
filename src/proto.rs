@@ -15,9 +15,9 @@ impl Protocol {
     #[cfg(feature = "tls")]
     pub fn from_alpn(alpn: Option<&[u8]>) -> Self {
         if let Some(v) = alpn {
-            if v.len() == 8 && &v[..] == ALPN_H1 {
+            if v.len() == 8 && v == ALPN_H1 {
                 Protocol::Http11
-            } else if v.len() == 2 && &v[..] == ALPN_H2 {
+            } else if v.len() == 2 && v == ALPN_H2 {
                 Protocol::Http2
             } else {
                 Protocol::Unknown

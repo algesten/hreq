@@ -6,7 +6,6 @@ use crate::Body;
 use http::Request;
 use http::Response;
 use std::fmt;
-use std::future::Future;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -113,32 +112,26 @@ where
         self.endpoints.push(Endpoint::new(method, path, chain));
     }
 
-    pub(crate) fn run<'a>(
-        &'a self,
-        state: Arc<State>,
-        mut req: Request<Body>,
-    ) -> impl Future<Output = Reply> + Send + 'a {
+    pub(crate) async fn run(&self, state: Arc<State>, mut req: Request<Body>) -> Reply {
         let uri = req.uri();
         let full_path = uri.path();
 
         assert!(full_path.starts_with(&self.prefix));
         let path = full_path.replacen(&self.prefix, "", 1);
 
-        async move {
-            for ep in &self.endpoints {
-                if &ep.method != req.method() {
-                    continue;
-                }
-                let m = ep.path.path_match(&path);
-                if let Some(m) = m {
-                    trace!("Use endpoint: {:?}", ep);
-                    req.extensions_mut().insert(m);
-                    return ep.chain.run(state, req).await;
-                }
+        for ep in &self.endpoints {
+            if &ep.method != req.method() {
+                continue;
             }
-            trace!("No endpoint");
-            Response::builder().status(404).body("Not found").into()
+            let m = ep.path.path_match(&path);
+            if let Some(m) = m {
+                trace!("Use endpoint: {:?}", ep);
+                req.extensions_mut().insert(m);
+                return ep.chain.run(state, req).await;
+            }
         }
+        trace!("No endpoint");
+        Response::builder().status(404).body("Not found").into()
     }
 }
 

@@ -77,12 +77,10 @@ impl CharsetConfig {
         let s_enc = if let Some(enc) = override_source {
             // override takes precedence
             enc
+        } else if is_incoming {
+            self.source.resolve(header_charset)
         } else {
-            if is_incoming {
-                self.source.resolve(header_charset)
-            } else {
-                self.source.resolve(encoding_rs::UTF_8)
-            }
+            self.source.resolve(encoding_rs::UTF_8)
         };
 
         let t_enc = if is_incoming {
@@ -129,8 +127,8 @@ static DEFAULT_ADDR: Lazy<SocketAddr> = Lazy::new(|| "0.0.0.0:1".parse().unwrap(
 impl HReqParams {
     pub fn new() -> Self {
         HReqParams {
-            local_addr: DEFAULT_ADDR.clone(),
-            remote_addr: DEFAULT_ADDR.clone(),
+            local_addr: *DEFAULT_ADDR,
+            remote_addr: *DEFAULT_ADDR,
             req_start: None,
             timeout: None,
             force_http2: false,

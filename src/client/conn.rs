@@ -11,7 +11,6 @@ use crate::Error;
 use crate::AGENT_IDENT;
 use bytes::Bytes;
 use futures_util::ready;
-use h2;
 use h2::client::SendRequest as H2SendRequest;
 use hreq_h1 as h1;
 use hreq_h1::client::SendRequest as H1SendRequest;
@@ -60,7 +59,7 @@ impl Connection {
         Connection {
             id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             host_port,
-            inner: inner,
+            inner,
             unfinished_reqs: Arc::new(()),
             bw,
         }
@@ -378,7 +377,7 @@ impl BodyBuf {
             self.return_body.take()
         } else {
             if let Some(vec) = &mut self.vec {
-                vec.resize(0, 0);
+                vec.clear();
             }
             self.return_body = None;
             None

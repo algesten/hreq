@@ -41,7 +41,7 @@ impl ParsedPath {
             let mut ret = PathMatch::new();
             for seg in &self.segments {
                 if let Segment::Wildcard(_, name) = seg {
-                    if name != "" {
+                    if !name.is_empty() {
                         let m = cap.name(&name).expect("Path match without param");
                         ret.add(&name[..], m.as_str());
                     }
@@ -114,7 +114,7 @@ impl Segment {
 
         RE.captures_iter(s)
             .map(|cap| {
-                let text = cap.get(3).or(cap.get(2)).unwrap().as_str();
+                let text = cap.get(3).or_else(|| cap.get(2)).unwrap().as_str();
                 match cap.get(1) {
                     None => Segment::Literal(text.to_string()),
                     Some(v) => match v.as_str() {
@@ -153,7 +153,7 @@ impl Segment {
 
     fn is_empty_literal(&self) -> bool {
         if let Segment::Literal(l) = self {
-            return l == "";
+            return l.is_empty();
         }
         false
     }
