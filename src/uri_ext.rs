@@ -35,25 +35,32 @@ impl UriExt for http::Uri {
     fn host_port(&self) -> Result<HostPort, Error> {
         HostPort::from_uri(self)
     }
+
     fn parse_relative(&self, from: &str) -> Result<http::Uri, Error> {
         let uri_res: Result<http::Uri, http::Error> =
             from.parse::<http::Uri>().map_err(|e| e.into());
+
         let uri = uri_res?;
+
         match (uri.scheme(), uri.authority()) {
             (Some(_), Some(_)) => Ok(uri),
+
             (None, None) => {
                 // it's relative to the original url
                 let mut parts = uri.into_parts();
                 parts.scheme = self.scheme().cloned();
                 parts.authority = self.authority().cloned();
+
                 Ok(http::Uri::from_parts(parts).unwrap())
             }
+
             _ => Err(Error::Proto(format!(
                 "Failed to parse '{}' relative to: {}",
                 uri, from
             ))),
         }
     }
+
     fn parent_host(&self) -> Option<http::Uri> {
         let mut parts = self.clone().into_parts();
         let auth = parts.authority?;
@@ -64,6 +71,7 @@ impl UriExt for http::Uri {
             // no parent to this uri
             return None;
         }
+
         let parent = host.split('.').skip(1).collect::<Vec<_>>().join(".");
 
         // http::uri::Authority doesn't give us easy access to this part sadly.
@@ -75,25 +83,31 @@ impl UriExt for http::Uri {
         };
 
         // assemble the new authority
-        let mut new_auth = parent;
-        if let Some(upwd) = upwd {
-            new_auth = format!("{}@{}", upwd, new_auth);
+        let new_auth = {
+            let mut new_auth = parent;
+            if let Some(upwd) = upwd {
+                new_auth = format!("{}@{}", upwd, new_auth);
+            };
+
+            if let Some(port) = auth.port() {
+                new_auth = format!("{}:{}", new_auth, port);
+            }
+
+            let fake_uri = format!("http://{}", new_auth);
+
+            fake_uri
+                .parse::<http::Uri>()
+                .expect("Parse fake uri")
+                .into_parts()
+                .authority
         };
-        if let Some(port) = auth.port() {
-            new_auth = format!("{}:{}", new_auth, port);
-        }
-        let fake_uri = format!("http://{}", new_auth);
-        let new_auth = fake_uri
-            .parse::<http::Uri>()
-            .expect("Parse fake uri")
-            .into_parts()
-            .authority;
 
         // change only the authority of the parts
         parts.authority = new_auth;
 
         Some(http::Uri::from_parts(parts).expect("Parent uri"))
     }
+
     fn is_secure(&self) -> bool {
         self.host_port().ok().map(|x| x.is_tls()).unwrap_or(false)
     }
