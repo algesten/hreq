@@ -38,6 +38,36 @@ impl UriExt for http::Uri {
     }
 
     fn parse_relative(&self, from: &str) -> Result<http::Uri, Error> {
+        let mut from = from.to_owned();
+
+        if from.contains(":///") {
+            // Special case to remove too many slashes after the scheme.
+            // We've seen both http:////foo and http:///foo in the wild.
+            loop {
+                from = from.replace(":///", "://");
+
+                // keep going until we have ://
+                if !from.contains(":///") {
+                    break;
+                }
+            }
+        }
+
+        // Special case when the redirect is just a scheme.
+        if from.ends_with("://") {
+            if let Ok(scheme) = (&from[..(from.len() - 3)]).parse() {
+                let mut parts = self.clone().into_parts();
+                parts.scheme = Some(scheme);
+
+                return Ok(http::Uri::from_parts(parts).unwrap());
+            } else {
+                return Err(Error::Proto(format!(
+                    "Redirect is unparseable scheme: {}",
+                    from
+                )));
+            }
+        }
+
         // There are two kinds of relative paths. Either starting with a '/' or not.
         //
         // root relative:
@@ -46,27 +76,35 @@ impl UriExt for http::Uri {
         // path relative:
         // "http://example.com/foo/"    + "bar/" => "http://example.com/foo/bar/"
         // "http://example.com/foo/baz" + "bar/" => "http://example.com/foo/bar/"
-        let is_path_relative = !from.contains("://") && !from.starts_with("/");
+        let scheme_after_query = match (from.find("://"), from.find('?')) {
+            (Some(scheme_idx), Some(query_idx)) => scheme_idx > query_idx,
+            _ => false,
+        };
+        let is_path_relative =
+            (!from.contains("://") || scheme_after_query) && !from.starts_with('/');
 
         let uri_res: Result<http::Uri, http::Error> = {
             if is_path_relative {
+                // This branch is handles urls without schemes and not starting
+                // with a '/'.
+
                 let mut buf = PathBuf::from(self.path());
 
                 // remove any files
-                if !self.path().ends_with('/') {
-                    if buf != Path::new("/") {
-                        buf.pop();
-                    }
+                if !self.path().ends_with('/') && buf != Path::new("/") {
+                    buf.pop();
                 }
 
                 // combine them together
-                buf.push(from);
+                buf.push(&from);
 
                 let combined = buf.to_str().unwrap();
 
                 combined.parse::<http::Uri>().map_err(|e| e.into())
             } else {
-                // The uri package will parse root relative paths without any help.
+                // This branch parses both full urls with a scheme + host as well
+                // as an absolute path starting with a '/'.
+
                 from.parse::<http::Uri>().map_err(|e| e.into())
             }
         };
@@ -232,7 +270,6 @@ mod test {
     }
 
     const PARSE_RELATIVES: &[(&str, &str, &str)] = &[
-        //
         ("http://x.com", "", "http://x.com/"),
         ("http://x.com/", "/", "http://x.com/"),
         ("http://x.com/", "bar", "http://x.com/bar"),
@@ -245,6 +282,31 @@ mod test {
         ("http://x.com/foo/", "/", "http://x.com/"),
         ("http://x.com/foo/", "bar", "http://x.com/foo/bar"),
         ("http://x.com/foo/", "/bar", "http://x.com/bar"),
+        //
+        (
+            "http://x.com/foo/",
+            "404D.aspx?cc=us&ll=en&url=http://xyz.com/bar/",
+            "http://x.com/foo/404D.aspx?cc=us&ll=en&url=http://xyz.com/bar/",
+        ),
+        //
+        // Some sites seems to think this should work, even with too many slashes.
+        ("http://x.com/foo/", "https://", "https://x.com/foo/"),
+        ("http://x.com/foo/", "https:///", "https://x.com/foo/"),
+        ("http://x.com/foo/", "https:////", "https://x.com/foo/"),
+        //
+        // Others think too many slashes is ok anywhere.
+        (
+            "http://x.com/foo/",
+            "http:///x.com/bar/",
+            "http://x.com/bar/",
+        ),
+        (
+            "http://x.com/foo/",
+            "http:////x.com/bar/",
+            "http://x.com/bar/",
+        ),
+        //
+        // A case that we don't handle, and curl agrees: "https://#"
     ];
 
     #[test]
@@ -252,9 +314,9 @@ mod test {
         for (base, rel, truth) in PARSE_RELATIVES {
             let url: http::Uri = base.parse().unwrap();
 
-            let parsed = url.parse_relative(rel).unwrap();
-
             println!("{:?} + {:?} => {:?}", base, rel, truth);
+
+            let parsed = url.parse_relative(rel).unwrap();
 
             assert_eq!(parsed.to_string(), *truth);
         }
