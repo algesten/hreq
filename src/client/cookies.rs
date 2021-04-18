@@ -9,7 +9,7 @@ use time::{Duration, OffsetDateTime};
 /// Technically a cookie without a max age, is a session cookie. hreq currently
 /// considers the lifetime of a session to be that of the Agent, we therefore
 /// just offset sessions cookies indefinitely.
-const DEFAULT_COOKIE_MAX_AGES_DAYS: i64 = 9999;
+const DEFAULT_COOKIE_MAX_AGES_DAYS: Duration = Duration::days(9999);
 
 #[derive(Debug)]
 pub(crate) struct Cookies {
@@ -32,9 +32,12 @@ impl Cookies {
         // all cookies must have an expires so we know when to remove them.
         if cookie.expires().is_none() {
             let max = if let Some(max) = cookie.max_age() {
-                max
+                // This addition below can panic. We must clamp the
+                // number of seconds allowed to not cause that panic.
+                // 'year must be in the range -100000..=100000'
+                max.min(DEFAULT_COOKIE_MAX_AGES_DAYS)
             } else {
-                Duration::days(DEFAULT_COOKIE_MAX_AGES_DAYS)
+                DEFAULT_COOKIE_MAX_AGES_DAYS
             };
             let exp = OffsetDateTime::now_utc() + max;
             cookie.set_expires(Some(exp))
