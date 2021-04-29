@@ -1,0 +1,27 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: webpki
+    versions:
+    - 0.22.0
+  - dependency-name: publicsuffix
+    versions:
+    - 2.0.10
+    - 2.0.11
+    - 2.0.5
+    - 2.0.8
+  - dependency-name: cookie
+    versions:
+    - 0.15.0
+  - dependency-name: tokio
+    versions:
+    - 1.1.0
+    - 1.2.0
+  - dependency-name: bytes
+    versions:
+    - 1.0.0
