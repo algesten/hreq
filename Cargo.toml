@@ -45,7 +45,7 @@ hreq-h1 = { version = "0.3.10" }
 h2 = { version = "0.3" }
 http = "0.2"
 httparse = "1"
-httpdate = "0.3.2"
+httpdate = "1.0.1"
 once_cell = "1"
 psl = "2"
 qstring = "0.7"
