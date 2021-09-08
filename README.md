@@ -1,3 +1,15 @@
+# PROJECT IS NOT ACTIVELY MAINTAINED
+
+At the moment, I don't have the time to drive this project.
+
+This project is using async Rust, and for async Rust HTTP clients I recommend looking at: [isahc](https://crates.io/crates/isahc) or [reqwest](https://crates.io/crates/reqwest)
+
+The time I have to devote to opensource I invest in this _sync_ HTTP client:[ureq](https://github.com/algesten/ureq)
+
+Martin
+
+----
+
 # hreq
 
 hreq is a user first async http client and server.
